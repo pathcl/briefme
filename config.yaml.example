@@ -1,0 +1,16 @@
+feeds:
+  - url: "https://hnrss.org/frontpage"
+    name: "Hacker News"
+  - url: "https://feeds.feedburner.com/oreilly/radar/radar"
+    name: "O'Reilly Radar"
+
+kobo_email: "your-kobo-email@kobo.com"
+
+smtp:
+  host: "smtp.gmail.com"
+  port: 587
+  username: "you@gmail.com"
+  password: "your-app-password"
+  from: "you@gmail.com"
+
+max_articles: 20
