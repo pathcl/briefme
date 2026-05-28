@@ -16,6 +16,7 @@ type Config struct {
 	Feeds      []FeedConfig `yaml:"feeds"`
 	KoboPath   string       `yaml:"kobo_path"`   // mount path; empty = auto-detect
 	MaxPerFeed int          `yaml:"max_per_feed"` // articles per feed; default 5
+	DBPath     string       `yaml:"db_path"`      // sqlite db; default ./briefme.db
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -34,6 +35,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.MaxPerFeed == 0 {
 		cfg.MaxPerFeed = 5
+	}
+	if cfg.DBPath == "" {
+		cfg.DBPath = "briefme.db"
 	}
 
 	return &cfg, nil

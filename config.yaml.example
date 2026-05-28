@@ -20,3 +20,5 @@ feeds:
 kobo_path: ""
 
 max_per_feed: 5   # articles fetched per feed; total = feeds × max_per_feed
+
+db_path: "briefme.db"   # sqlite database tracking seen articles (created automatically)

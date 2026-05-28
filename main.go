@@ -18,25 +18,46 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
+	store, err := OpenStore(cfg.DBPath)
+	if err != nil {
+		log.Fatalf("store: %v", err)
+	}
+	defer store.Close()
+
 	log.Printf("fetching from %d feed(s), max %d articles each", len(cfg.Feeds), cfg.MaxPerFeed)
 	articles, err := FetchArticles(cfg.Feeds, cfg.MaxPerFeed)
 	if err != nil {
 		log.Fatalf("fetch: %v", err)
 	}
+
+	articles, err = store.FilterNew(articles)
+	if err != nil {
+		log.Fatalf("filter: %v", err)
+	}
+	log.Printf("%d new articles (unseen)", len(articles))
+
 	if len(articles) == 0 {
-		log.Println("no articles found, nothing to do")
+		log.Println("nothing new to deliver")
 		os.Exit(0)
 	}
-	log.Printf("fetched %d articles", len(articles))
 
 	log.Println("fetching full article content...")
 	articles = EnrichArticles(articles)
+
+	if len(articles) == 0 {
+		log.Println("no articles with extractable content")
+		os.Exit(0)
+	}
 
 	epubPath := fmt.Sprintf("briefme-%s.epub", time.Now().Format("2006-01-02"))
 	if err := BuildEPUB(articles, epubPath); err != nil {
 		log.Fatalf("build epub: %v", err)
 	}
 	log.Printf("built EPUB: %s", epubPath)
+
+	if err := store.MarkSeen(articles); err != nil {
+		log.Fatalf("mark seen: %v", err)
+	}
 
 	if *dryRun {
 		log.Println("--dry-run: skipping copy to Kobo")
