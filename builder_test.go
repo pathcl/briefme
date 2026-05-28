@@ -2,6 +2,8 @@ package main
 
 import (
 	"archive/zip"
+	"fmt"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -62,7 +64,6 @@ func TestBuildEPUB_ValidZipStructure(t *testing.T) {
 		}
 	}
 
-	// Must have at least one HTML content file
 	hasHTML := false
 	for name := range names {
 		if strings.HasSuffix(name, ".xhtml") || strings.HasSuffix(name, ".html") {
@@ -72,6 +73,59 @@ func TestBuildEPUB_ValidZipStructure(t *testing.T) {
 	}
 	if !hasHTML {
 		t.Error("EPUB contains no HTML content files")
+	}
+}
+
+func TestBuildEPUB_HasIndexPage(t *testing.T) {
+	articles := []Article{
+		{Title: "Article One", Content: "<p>one</p>", URL: "https://example.com/1"},
+		{Title: "Article Two", Content: "<p>two</p>", URL: "https://example.com/2"},
+	}
+	out := tempEPUBPath(t)
+	if err := BuildEPUB(articles, out); err != nil {
+		t.Fatalf("BuildEPUB error: %v", err)
+	}
+
+	content := readEPUBFile(t, out, "EPUB/xhtml/index.xhtml")
+	if !strings.Contains(content, "Article One") {
+		t.Error("index page missing first article title")
+	}
+	if !strings.Contains(content, "Article Two") {
+		t.Error("index page missing second article title")
+	}
+}
+
+func TestBuildEPUB_IndexLinksToArticles(t *testing.T) {
+	articles := []Article{
+		{Title: "First", Content: "<p>one</p>", URL: "https://example.com/1"},
+		{Title: "Second", Content: "<p>two</p>", URL: "https://example.com/2"},
+	}
+	out := tempEPUBPath(t)
+	if err := BuildEPUB(articles, out); err != nil {
+		t.Fatalf("BuildEPUB error: %v", err)
+	}
+
+	index := readEPUBFile(t, out, "EPUB/xhtml/index.xhtml")
+	for i := range articles {
+		link := fmt.Sprintf("article-%03d.xhtml", i+1)
+		if !strings.Contains(index, link) {
+			t.Errorf("index missing link to %s", link)
+		}
+	}
+}
+
+func TestBuildEPUB_ArticlesHaveBackLink(t *testing.T) {
+	articles := []Article{
+		{Title: "Only Article", Content: "<p>content</p>", URL: "https://example.com/1"},
+	}
+	out := tempEPUBPath(t)
+	if err := BuildEPUB(articles, out); err != nil {
+		t.Fatalf("BuildEPUB error: %v", err)
+	}
+
+	article := readEPUBFile(t, out, "EPUB/xhtml/article-001.xhtml")
+	if !strings.Contains(article, "index.xhtml") {
+		t.Error("article missing back link to index.xhtml")
 	}
 }
 
@@ -92,4 +146,29 @@ func tempEPUBPath(t *testing.T) string {
 	f.Close()
 	t.Cleanup(func() { os.Remove(f.Name()) })
 	return f.Name()
+}
+
+func readEPUBFile(t *testing.T, epubPath, internalPath string) string {
+	t.Helper()
+	zr, err := zip.OpenReader(epubPath)
+	if err != nil {
+		t.Fatalf("open epub: %v", err)
+	}
+	defer zr.Close()
+	for _, f := range zr.File {
+		if f.Name == internalPath {
+			rc, err := f.Open()
+			if err != nil {
+				t.Fatalf("open %s: %v", internalPath, err)
+			}
+			defer rc.Close()
+			data, err := io.ReadAll(rc)
+			if err != nil {
+				t.Fatalf("read %s: %v", internalPath, err)
+			}
+			return string(data)
+		}
+	}
+	t.Fatalf("file %q not found in EPUB", internalPath)
+	return ""
 }
