@@ -1,20 +1,21 @@
-package main
+package config_test
 
 import (
 	"os"
 	"testing"
+
+	"github.com/pathcl/briefme/internal/config"
 )
 
-func TestLoadConfig_Valid(t *testing.T) {
-	yaml := `
+func TestLoad_Valid(t *testing.T) {
+	f := writeTempFile(t, `
 feeds:
   - url: "https://example.com/feed.xml"
     name: "Example"
 kobo_path: "/media/user/KOBOeReader"
 max_per_feed: 10
-`
-	f := writeTempFile(t, yaml)
-	cfg, err := LoadConfig(f)
+`)
+	cfg, err := config.Load(f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -32,26 +33,20 @@ max_per_feed: 10
 	}
 }
 
-func TestLoadConfig_NoFeeds(t *testing.T) {
-	yaml := `
-feeds: []
-kobo_path: "/media/user/KOBOeReader"
-`
-	f := writeTempFile(t, yaml)
-	_, err := LoadConfig(f)
-	if err == nil {
+func TestLoad_NoFeeds(t *testing.T) {
+	f := writeTempFile(t, `feeds: []`)
+	if _, err := config.Load(f); err == nil {
 		t.Fatal("expected error for empty feeds")
 	}
 }
 
-func TestLoadConfig_DefaultMaxPerFeed(t *testing.T) {
-	yaml := `
+func TestLoad_DefaultMaxPerFeed(t *testing.T) {
+	f := writeTempFile(t, `
 feeds:
   - url: "https://example.com/feed.xml"
     name: "Example"
-`
-	f := writeTempFile(t, yaml)
-	cfg, err := LoadConfig(f)
+`)
+	cfg, err := config.Load(f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -60,14 +55,13 @@ feeds:
 	}
 }
 
-func TestLoadConfig_DefaultCategoryIsNews(t *testing.T) {
-	yaml := `
+func TestLoad_DefaultCategoryIsNews(t *testing.T) {
+	f := writeTempFile(t, `
 feeds:
   - url: "https://example.com/feed.xml"
     name: "Example"
-`
-	f := writeTempFile(t, yaml)
-	cfg, err := LoadConfig(f)
+`)
+	cfg, err := config.Load(f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -76,15 +70,14 @@ feeds:
 	}
 }
 
-func TestLoadConfig_ExplicitCategory(t *testing.T) {
-	yaml := `
+func TestLoad_ExplicitCategory(t *testing.T) {
+	f := writeTempFile(t, `
 feeds:
   - url: "https://arxiv.org/rss/cs.AI"
     name: "arXiv"
     category: "papers"
-`
-	f := writeTempFile(t, yaml)
-	cfg, err := LoadConfig(f)
+`)
+	cfg, err := config.Load(f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -93,16 +86,15 @@ feeds:
 	}
 }
 
-func TestLoadConfig_KoboPathOptional(t *testing.T) {
-	yaml := `
+func TestLoad_KoboPathOptional(t *testing.T) {
+	f := writeTempFile(t, `
 feeds:
   - url: "https://example.com/feed.xml"
     name: "Example"
-`
-	f := writeTempFile(t, yaml)
-	cfg, err := LoadConfig(f)
+`)
+	cfg, err := config.Load(f)
 	if err != nil {
-		t.Fatalf("kobo_path should be optional (auto-detect at runtime): %v", err)
+		t.Fatalf("kobo_path should be optional: %v", err)
 	}
 	if cfg.KoboPath != "" {
 		t.Errorf("expected empty kobo_path, got %s", cfg.KoboPath)
@@ -116,9 +108,7 @@ func writeTempFile(t *testing.T, content string) string {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.Remove(f.Name()) })
-	if _, err := f.WriteString(content); err != nil {
-		t.Fatal(err)
-	}
+	f.WriteString(content)
 	f.Close()
 	return f.Name()
 }

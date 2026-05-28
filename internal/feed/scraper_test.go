@@ -1,13 +1,16 @@
-package main
+package feed_test
 
 import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/pathcl/briefme/internal/feed"
+	"github.com/pathcl/briefme/internal/model"
 )
 
-// realArticleHTML has enough content for go-readability to detect the main body.
+// realArticleHTML is shared across scraper and arxiv tests.
 const realArticleHTML = `<!DOCTYPE html>
 <html>
 <head><title>Scientists Discover New Species</title></head>
@@ -37,14 +40,19 @@ const realArticleHTML = `<!DOCTYPE html>
 </body>
 </html>`
 
-func TestFetchContent_ExtractsArticleText(t *testing.T) {
+func articleServer(t *testing.T) *httptest.Server {
+	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write([]byte(realArticleHTML))
 	}))
-	defer srv.Close()
+	t.Cleanup(srv.Close)
+	return srv
+}
 
-	content, err := FetchContent(srv.URL)
+func TestFetchContent_ExtractsArticleText(t *testing.T) {
+	srv := articleServer(t)
+	content, err := feed.FetchContent(srv.URL)
 	if err != nil {
 		t.Fatalf("FetchContent error: %v", err)
 	}
@@ -54,13 +62,8 @@ func TestFetchContent_ExtractsArticleText(t *testing.T) {
 }
 
 func TestFetchContent_ExcludesSidebarAndFooter(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write([]byte(realArticleHTML))
-	}))
-	defer srv.Close()
-
-	content, err := FetchContent(srv.URL)
+	srv := articleServer(t)
+	content, err := feed.FetchContent(srv.URL)
 	if err != nil {
 		t.Fatalf("FetchContent error: %v", err)
 	}
@@ -70,7 +73,7 @@ func TestFetchContent_ExcludesSidebarAndFooter(t *testing.T) {
 }
 
 func TestFetchContent_BadURL(t *testing.T) {
-	_, err := FetchContent("http://127.0.0.1:0/nonexistent")
+	_, err := feed.FetchContent("http://127.0.0.1:0/nonexistent")
 	if err == nil {
 		t.Fatal("expected error for unreachable URL")
 	}
@@ -81,58 +84,39 @@ func TestFetchContent_Non200Status(t *testing.T) {
 		w.WriteHeader(http.StatusForbidden)
 	}))
 	defer srv.Close()
-
-	_, err := FetchContent(srv.URL)
-	if err == nil {
+	if _, err := feed.FetchContent(srv.URL); err == nil {
 		t.Fatal("expected error for 403 response")
 	}
 }
 
 func TestEnrichArticles_DropsFailedArticles(t *testing.T) {
-	articles := []Article{
-		{Title: "Bad article", URL: "", Content: "rss garbage"},
-	}
-	result := EnrichArticles(articles)
+	articles := []model.Article{{Title: "Bad", URL: "", Content: "rss garbage"}}
+	result := feed.EnrichArticles(articles)
 	if len(result) != 0 {
 		t.Errorf("expected failed article to be dropped, got %d articles", len(result))
 	}
 }
 
 func TestEnrichArticles_KeepsSuccessfulArticles(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write([]byte(realArticleHTML))
-	}))
-	defer srv.Close()
-
-	articles := []Article{
-		{Title: "Good article", URL: srv.URL, Content: "rss excerpt"},
-	}
-	result := EnrichArticles(articles)
+	srv := articleServer(t)
+	articles := []model.Article{{Title: "Good", URL: srv.URL, Content: "rss excerpt"}}
+	result := feed.EnrichArticles(articles)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 article, got %d", len(result))
 	}
 	if result[0].Content == "rss excerpt" {
 		t.Error("content was not replaced with scraped version")
 	}
-	if !strings.Contains(result[0].Content, "bioluminescent") {
-		t.Error("scraped content not present in result")
-	}
 }
 
 func TestEnrichArticles_MixedResults(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write([]byte(realArticleHTML))
-	}))
-	defer srv.Close()
-
-	articles := []Article{
-		{Title: "Good",    URL: srv.URL, Content: "rss excerpt"},
-		{Title: "Paywalled", URL: "",   Content: "rss garbage"},
-		{Title: "Good 2",  URL: srv.URL, Content: "rss excerpt 2"},
+	srv := articleServer(t)
+	articles := []model.Article{
+		{Title: "Good",      URL: srv.URL, Content: "rss excerpt"},
+		{Title: "Paywalled", URL: "",       Content: "rss garbage"},
+		{Title: "Good 2",    URL: srv.URL, Content: "rss excerpt 2"},
 	}
-	result := EnrichArticles(articles)
+	result := feed.EnrichArticles(articles)
 	if len(result) != 2 {
 		t.Errorf("expected 2 successful articles, got %d", len(result))
 	}

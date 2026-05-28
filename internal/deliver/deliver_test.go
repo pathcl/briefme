@@ -1,20 +1,19 @@
-package main
+package deliver_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/pathcl/briefme/internal/deliver"
 )
 
-func TestDeliverEPUB_CopiesToDestination(t *testing.T) {
-	// source EPUB
-	src := writeTempEPUBDelivery(t, "fake epub content")
-
-	// simulate a mounted Kobo (just a temp dir)
+func TestToKobo_CopiesToDestination(t *testing.T) {
+	src := writeTempEPUB(t, "fake epub content")
 	koboDir := t.TempDir()
 
-	if err := DeliverEPUB(koboDir, src); err != nil {
-		t.Fatalf("DeliverEPUB error: %v", err)
+	if err := deliver.ToKobo(koboDir, src); err != nil {
+		t.Fatalf("ToKobo error: %v", err)
 	}
 
 	dst := filepath.Join(koboDir, filepath.Base(src))
@@ -27,15 +26,14 @@ func TestDeliverEPUB_CopiesToDestination(t *testing.T) {
 	}
 }
 
-func TestDeliverEPUB_MissingKoboPath(t *testing.T) {
-	src := writeTempEPUBDelivery(t, "fake epub content")
-	err := DeliverEPUB("/nonexistent/kobo/path", src)
-	if err == nil {
+func TestToKobo_MissingKoboPath(t *testing.T) {
+	src := writeTempEPUB(t, "fake epub content")
+	if err := deliver.ToKobo("/nonexistent/kobo/path", src); err == nil {
 		t.Fatal("expected error for missing kobo path")
 	}
 }
 
-func writeTempEPUBDelivery(t *testing.T, content string) string {
+func writeTempEPUB(t *testing.T, content string) string {
 	t.Helper()
 	f, err := os.CreateTemp("", "briefme-deliver-*.epub")
 	if err != nil {

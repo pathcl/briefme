@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"fmt"
@@ -10,17 +10,17 @@ import (
 type FeedConfig struct {
 	URL      string `yaml:"url"`
 	Name     string `yaml:"name"`
-	Category string `yaml:"category"` // e.g. "news", "papers"; default "news"
+	Category string `yaml:"category"`
 }
 
 type Config struct {
 	Feeds      []FeedConfig `yaml:"feeds"`
-	KoboPath   string       `yaml:"kobo_path"`   // mount path; empty = auto-detect
-	MaxPerFeed int          `yaml:"max_per_feed"` // articles per feed; default 5
-	DBPath     string       `yaml:"db_path"`      // sqlite db; default ./briefme.db
+	KoboPath   string       `yaml:"kobo_path"`
+	MaxPerFeed int          `yaml:"max_per_feed"`
+	DBPath     string       `yaml:"db_path"`
 }
 
-func LoadConfig(path string) (*Config, error) {
+func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read config: %w", err)

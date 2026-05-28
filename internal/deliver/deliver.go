@@ -1,4 +1,4 @@
-package main
+package deliver
 
 import (
 	"fmt"
@@ -8,9 +8,7 @@ import (
 	"runtime"
 )
 
-// DeliverEPUB copies the EPUB to the Kobo mount path.
-// If koboPath is empty it attempts auto-detection.
-func DeliverEPUB(koboPath, epubPath string) error {
+func ToKobo(koboPath, epubPath string) error {
 	if koboPath == "" {
 		detected, err := detectKoboPath()
 		if err != nil {
@@ -32,9 +30,9 @@ func DeliverEPUB(koboPath, epubPath string) error {
 					"Note: 'remount' cannot change uid on FAT — you must unmount and remount:\n\n"+
 					"  sudo umount %s\n"+
 					"  sudo mount -t vfat -o uid=%d,gid=%d,fmask=0022,dmask=0022 <device> %s\n\n"+
-					"For a permanent fix add this to /etc/fstab (replace UUID and device):\n"+
+					"For a permanent fix add to /etc/fstab:\n"+
 					"  UUID=<uuid>  %s  vfat  uid=%d,gid=%d,fmask=0022,dmask=0022,nofail  0  0\n"+
-					"Find the UUID with: sudo blkid <device>",
+					"Find UUID with: sudo blkid <device>",
 				koboPath,
 				koboPath, os.Getuid(), os.Getgid(), koboPath,
 				koboPath, os.Getuid(), os.Getgid(),
@@ -48,12 +46,11 @@ func DeliverEPUB(koboPath, epubPath string) error {
 func detectKoboPath() (string, error) {
 	user := os.Getenv("USER")
 	candidates := []string{
-		"/Volumes/KOBOeReader",                               // macOS
-		filepath.Join("/media", user, "KOBOeReader"),         // Linux (udisks)
-		filepath.Join("/run/media", user, "KOBOeReader"),     // Linux (systemd)
+		"/Volumes/KOBOeReader",
+		filepath.Join("/media", user, "KOBOeReader"),
+		filepath.Join("/run/media", user, "KOBOeReader"),
 	}
 	if runtime.GOOS == "windows" {
-		// On Windows, scan common drive letters for the Kobo marker file.
 		for _, drive := range "DEFGHIJKLMNOPQRSTUVWXYZ" {
 			p := string(drive) + `:\`
 			if _, err := os.Stat(filepath.Join(p, ".kobo")); err == nil {
@@ -75,13 +72,11 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	defer in.Close()
-
 	out, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
 	defer out.Close()
-
 	if _, err := io.Copy(out, in); err != nil {
 		return err
 	}

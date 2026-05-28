@@ -1,4 +1,4 @@
-package main
+package epub
 
 import (
 	"fmt"
@@ -6,7 +6,9 @@ import (
 	"os"
 	"strings"
 
-	epub "github.com/bmaupin/go-epub"
+	goepub "github.com/bmaupin/go-epub"
+	"github.com/pathcl/briefme/internal/feed"
+	"github.com/pathcl/briefme/internal/model"
 )
 
 const articleCSS = `body { font-family: Georgia, serif; font-size: 1em; line-height: 1.6; margin: 1em; }
@@ -19,7 +21,7 @@ h2 { font-size: 1.1em; margin: 1.5em 0 0.3em; }
 .toc .feed { font-size: 0.8em; color: #777; margin-left: 0.4em; }
 `
 
-func BuildEPUB(articles []Article, outputPath, title string) error {
+func Build(articles []model.Article, outputPath, title string) error {
 	if len(articles) == 0 {
 		return fmt.Errorf("no articles to package")
 	}
@@ -35,7 +37,7 @@ func BuildEPUB(articles []Article, outputPath, title string) error {
 	}
 	cssFile.Close()
 
-	book := epub.NewEpub(title)
+	book := goepub.NewEpub(title)
 	book.SetAuthor("briefme")
 
 	cssPath, err := book.AddCSS(cssFile.Name(), "article.css")
@@ -43,7 +45,6 @@ func BuildEPUB(articles []Article, outputPath, title string) error {
 		return fmt.Errorf("add css: %w", err)
 	}
 
-	// Pre-assign filenames so the index can link to them.
 	filenames := make([]string, len(articles))
 	for i := range articles {
 		filenames[i] = fmt.Sprintf("article-%03d.xhtml", i+1)
@@ -67,22 +68,22 @@ func BuildEPUB(articles []Article, outputPath, title string) error {
 	return nil
 }
 
-func buildIndexHTML(title string, articles []Article, filenames []string) string {
+func buildIndexHTML(title string, articles []model.Article, filenames []string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "<h1>%s</h1>\n<ol class=\"toc\">\n", html.EscapeString(title))
 	for i, a := range articles {
-		feed := ""
+		feedSpan := ""
 		if a.FeedName != "" {
-			feed = fmt.Sprintf(` <span class="feed">%s</span>`, html.EscapeString(a.FeedName))
+			feedSpan = fmt.Sprintf(` <span class="feed">%s</span>`, html.EscapeString(a.FeedName))
 		}
 		fmt.Fprintf(&b, "  <li><a href=\"%s\">%s</a>%s</li>\n",
-			filenames[i], html.EscapeString(a.Title), feed)
+			filenames[i], html.EscapeString(a.Title), feedSpan)
 	}
 	b.WriteString("</ol>")
 	return b.String()
 }
 
-func buildArticleHTML(a Article) string {
+func buildArticleHTML(a model.Article) string {
 	meta := ""
 	if !a.PublishedAt.IsZero() {
 		meta += html.EscapeString(a.PublishedAt.Format("January 2, 2006"))
@@ -106,6 +107,6 @@ func buildArticleHTML(a Article) string {
 	if meta != "" {
 		fmt.Fprintf(&b, "<p class=\"meta\">%s</p>\n", meta)
 	}
-	fmt.Fprintf(&b, "<div>%s</div>", extractText(a.Content))
+	fmt.Fprintf(&b, "<div>%s</div>", feed.ExtractText(a.Content))
 	return b.String()
 }

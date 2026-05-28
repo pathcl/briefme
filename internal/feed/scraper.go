@@ -1,4 +1,4 @@
-package main
+package feed
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	readability "github.com/go-shiori/go-readability"
+	"github.com/pathcl/briefme/internal/model"
 )
 
 var httpClient = &http.Client{Timeout: 20 * time.Second}
@@ -16,18 +17,16 @@ var httpClient = &http.Client{Timeout: 20 * time.Second}
 // For arXiv abstract URLs it tries the experimental HTML full-paper version first,
 // falling back to the abstract page if the HTML version is unavailable.
 func FetchContent(articleURL string) (string, error) {
-	return fetchContent(articleURL, arxivAbstractToHTML(articleURL))
+	return FetchContentWithAlt(articleURL, ArxivAbstractToHTML(articleURL))
 }
 
-// fetchContent fetches altURL first (if non-empty); on failure falls back to articleURL.
-// Keeping altURL as an explicit parameter makes the arXiv fallback logic testable
-// without hitting real external servers.
-func fetchContent(articleURL, altURL string) (string, error) {
+// FetchContentWithAlt tries altURL first (if non-empty), falling back to articleURL.
+// Exported so tests can inject test-server URLs without hitting real external servers.
+func FetchContentWithAlt(articleURL, altURL string) (string, error) {
 	if altURL != "" {
 		if content, err := fetchReadable(altURL); err == nil {
 			return content, nil
 		}
-		// HTML version unavailable — fall through to the original URL.
 	}
 	return fetchReadable(articleURL)
 }
@@ -66,8 +65,8 @@ func fetchReadable(u string) (string, error) {
 
 // EnrichArticles fetches the full text for each article URL. Articles that
 // cannot be fetched or parsed are dropped entirely.
-func EnrichArticles(articles []Article) []Article {
-	var out []Article
+func EnrichArticles(articles []model.Article) []model.Article {
+	var out []model.Article
 	for _, a := range articles {
 		content, err := FetchContent(a.URL)
 		if err != nil {

@@ -1,26 +1,18 @@
-package main
+package feed
 
 import (
 	"fmt"
 	"time"
 
 	"github.com/mmcdole/gofeed"
+	"github.com/pathcl/briefme/internal/config"
+	"github.com/pathcl/briefme/internal/model"
 )
 
-type Article struct {
-	Title       string
-	Author      string
-	URL         string
-	Content     string
-	PublishedAt time.Time
-	FeedName    string
-	Category    string
-}
-
-func FetchArticles(feeds []FeedConfig, max int) ([]Article, error) {
+func FetchArticles(feeds []config.FeedConfig, max int) ([]model.Article, error) {
 	parser := gofeed.NewParser()
 	seen := make(map[string]struct{})
-	var articles []Article
+	var articles []model.Article
 
 	for _, fc := range feeds {
 		feed, err := parser.ParseURL(fc.URL)
@@ -55,7 +47,7 @@ func FetchArticles(feeds []FeedConfig, max int) ([]Article, error) {
 			}
 
 			feedCount++
-			articles = append(articles, Article{
+			articles = append(articles, model.Article{
 				Title:       item.Title,
 				Author:      author,
 				URL:         url,

@@ -1,9 +1,12 @@
-package main
+package feed_test
 
 import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/pathcl/briefme/internal/config"
+	"github.com/pathcl/briefme/internal/feed"
 )
 
 const sampleRSS = `<?xml version="1.0" encoding="UTF-8"?>
@@ -28,22 +31,25 @@ const sampleRSS = `<?xml version="1.0" encoding="UTF-8"?>
   </channel>
 </rss>`
 
-func TestFetchArticles_Basic(t *testing.T) {
+func rssServer(t *testing.T) *httptest.Server {
+	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/rss+xml")
 		w.Write([]byte(sampleRSS))
 	}))
-	defer srv.Close()
+	t.Cleanup(srv.Close)
+	return srv
+}
 
-	feeds := []FeedConfig{{URL: srv.URL, Name: "Test"}}
-	articles, err := FetchArticles(feeds, 10)
+func TestFetchArticles_Basic(t *testing.T) {
+	srv := rssServer(t)
+	articles, err := feed.FetchArticles([]config.FeedConfig{{URL: srv.URL, Name: "Test"}}, 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(articles) != 2 {
 		t.Fatalf("expected 2 articles, got %d", len(articles))
 	}
-
 	a := articles[0]
 	if a.Title != "Article One" {
 		t.Errorf("unexpected title: %s", a.Title)
@@ -57,56 +63,38 @@ func TestFetchArticles_Basic(t *testing.T) {
 }
 
 func TestFetchArticles_FallsBackToDescription(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/rss+xml")
-		w.Write([]byte(sampleRSS))
-	}))
-	defer srv.Close()
-
-	feeds := []FeedConfig{{URL: srv.URL, Name: "Test"}}
-	articles, err := FetchArticles(feeds, 10)
+	srv := rssServer(t)
+	articles, err := feed.FetchArticles([]config.FeedConfig{{URL: srv.URL, Name: "Test"}}, 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	a := articles[1]
-	if a.Content != "Short description two" {
-		t.Errorf("expected description as fallback, got: %s", a.Content)
+	if articles[1].Content != "Short description two" {
+		t.Errorf("expected description fallback, got: %s", articles[1].Content)
 	}
 }
 
 func TestFetchArticles_PerFeedLimit(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/rss+xml")
-		w.Write([]byte(sampleRSS)) // 2 articles per feed
-	}))
-	defer srv.Close()
-
-	// 2 feeds × max 1 per feed = 2 total, not 1
-	feeds := []FeedConfig{
+	srv := rssServer(t)
+	feeds := []config.FeedConfig{
 		{URL: srv.URL + "?a", Name: "Feed A"},
 		{URL: srv.URL + "?b", Name: "Feed B"},
 	}
-	articles, err := FetchArticles(feeds, 1)
+	articles, err := feed.FetchArticles(feeds, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(articles) != 2 {
-		t.Errorf("expected 1 article per feed (2 total), got %d", len(articles))
+		t.Errorf("expected 1 per feed (2 total), got %d", len(articles))
 	}
 }
 
 func TestFetchArticles_DeduplicatesByURL(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/rss+xml")
-		w.Write([]byte(sampleRSS))
-	}))
-	defer srv.Close()
-
-	feeds := []FeedConfig{
+	srv := rssServer(t)
+	feeds := []config.FeedConfig{
 		{URL: srv.URL, Name: "Feed A"},
 		{URL: srv.URL, Name: "Feed B"},
 	}
-	articles, err := FetchArticles(feeds, 100)
+	articles, err := feed.FetchArticles(feeds, 100)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -116,14 +104,8 @@ func TestFetchArticles_DeduplicatesByURL(t *testing.T) {
 }
 
 func TestFetchArticles_CategoryPassedToArticles(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/rss+xml")
-		w.Write([]byte(sampleRSS))
-	}))
-	defer srv.Close()
-
-	feeds := []FeedConfig{{URL: srv.URL, Name: "arXiv", Category: "papers"}}
-	articles, err := FetchArticles(feeds, 10)
+	srv := rssServer(t)
+	articles, err := feed.FetchArticles([]config.FeedConfig{{URL: srv.URL, Name: "arXiv", Category: "papers"}}, 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -135,8 +117,7 @@ func TestFetchArticles_CategoryPassedToArticles(t *testing.T) {
 }
 
 func TestFetchArticles_BadURL(t *testing.T) {
-	feeds := []FeedConfig{{URL: "http://127.0.0.1:0/nonexistent", Name: "Bad"}}
-	_, err := FetchArticles(feeds, 10)
+	_, err := feed.FetchArticles([]config.FeedConfig{{URL: "http://127.0.0.1:0/bad", Name: "Bad"}}, 10)
 	if err == nil {
 		t.Fatal("expected error for bad URL")
 	}

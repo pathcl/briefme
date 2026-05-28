@@ -1,4 +1,4 @@
-package main
+package store
 
 import (
 	"crypto/sha256"
@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/pathcl/briefme/internal/model"
 	_ "modernc.org/sqlite"
 )
 
@@ -16,7 +17,7 @@ type Store struct {
 	db *sql.DB
 }
 
-func OpenStore(path string) (*Store, error) {
+func Open(path string) (*Store, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
@@ -46,13 +47,11 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// FilterNew returns only articles whose URL is not already in the store.
-func (s *Store) FilterNew(articles []Article) ([]Article, error) {
-	var out []Article
+func (s *Store) FilterNew(articles []model.Article) ([]model.Article, error) {
+	var out []model.Article
 	for _, a := range articles {
 		var n int
-		err := s.db.QueryRow("SELECT COUNT(*) FROM articles WHERE url = ?", a.URL).Scan(&n)
-		if err != nil {
+		if err := s.db.QueryRow("SELECT COUNT(*) FROM articles WHERE url = ?", a.URL).Scan(&n); err != nil {
 			return nil, fmt.Errorf("query %q: %w", a.URL, err)
 		}
 		if n == 0 {
@@ -62,57 +61,14 @@ func (s *Store) FilterNew(articles []Article) ([]Article, error) {
 	return out, nil
 }
 
-// LookupEPUB checks whether an EPUB with this SHA-256 was previously produced.
-// If found, it also returns the filename that was recorded at the time.
-// The caller is responsible for checking whether that file still exists on disk.
-func (s *Store) LookupEPUB(sha256sum string) (filename string, found bool, err error) {
-	qErr := s.db.QueryRow("SELECT filename FROM epubs WHERE sha256 = ?", sha256sum).Scan(&filename)
-	if qErr == sql.ErrNoRows {
-		return "", false, nil
-	}
-	if qErr != nil {
-		return "", false, fmt.Errorf("lookup epub: %w", qErr)
-	}
-	return filename, true, nil
-}
-
-// RecordEPUB stores the checksum and filename of a produced EPUB.
-// Duplicates are silently ignored.
-func (s *Store) RecordEPUB(sha256sum, filename string) error {
-	_, err := s.db.Exec(
-		"INSERT OR IGNORE INTO epubs (sha256, filename) VALUES (?, ?)",
-		sha256sum, filename,
-	)
-	if err != nil {
-		return fmt.Errorf("record epub: %w", err)
-	}
-	return nil
-}
-
-// checksumFile returns the hex-encoded SHA-256 of the file at path.
-func checksumFile(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", fmt.Errorf("open for checksum: %w", err)
-	}
-	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", fmt.Errorf("hash file: %w", err)
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
-}
-
-// MarkSeen records articles in the store. Duplicates are silently ignored.
-func (s *Store) MarkSeen(articles []Article) error {
+func (s *Store) MarkSeen(articles []model.Article) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare(`INSERT OR IGNORE INTO articles (url, title, feed, published)
-		VALUES (?, ?, ?, ?)`)
+	stmt, err := tx.Prepare(`INSERT OR IGNORE INTO articles (url, title, feed, published) VALUES (?, ?, ?, ?)`)
 	if err != nil {
 		return fmt.Errorf("prepare stmt: %w", err)
 	}
@@ -127,6 +83,40 @@ func (s *Store) MarkSeen(articles []Article) error {
 			return fmt.Errorf("insert %q: %w", a.URL, err)
 		}
 	}
-
 	return tx.Commit()
+}
+
+// LookupEPUB checks whether an EPUB with this SHA-256 was previously produced.
+// If found, returns the filename recorded at the time.
+func (s *Store) LookupEPUB(sha256sum string) (filename string, found bool, err error) {
+	qErr := s.db.QueryRow("SELECT filename FROM epubs WHERE sha256 = ?", sha256sum).Scan(&filename)
+	if qErr == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if qErr != nil {
+		return "", false, fmt.Errorf("lookup epub: %w", qErr)
+	}
+	return filename, true, nil
+}
+
+func (s *Store) RecordEPUB(sha256sum, filename string) error {
+	_, err := s.db.Exec("INSERT OR IGNORE INTO epubs (sha256, filename) VALUES (?, ?)", sha256sum, filename)
+	if err != nil {
+		return fmt.Errorf("record epub: %w", err)
+	}
+	return nil
+}
+
+// ChecksumFile returns the hex-encoded SHA-256 of the file at path.
+func ChecksumFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open for checksum: %w", err)
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", fmt.Errorf("hash file: %w", err)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
