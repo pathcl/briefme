@@ -115,6 +115,25 @@ func TestFetchArticles_DeduplicatesByURL(t *testing.T) {
 	}
 }
 
+func TestFetchArticles_CategoryPassedToArticles(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		w.Write([]byte(sampleRSS))
+	}))
+	defer srv.Close()
+
+	feeds := []FeedConfig{{URL: srv.URL, Name: "arXiv", Category: "papers"}}
+	articles, err := FetchArticles(feeds, 10)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, a := range articles {
+		if a.Category != "papers" {
+			t.Errorf("expected category 'papers', got %q", a.Category)
+		}
+	}
+}
+
 func TestFetchArticles_BadURL(t *testing.T) {
 	feeds := []FeedConfig{{URL: "http://127.0.0.1:0/nonexistent", Name: "Bad"}}
 	_, err := FetchArticles(feeds, 10)

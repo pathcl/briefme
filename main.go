@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 )
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "path to config file")
-	dryRun := flag.Bool("dry-run", false, "build EPUB locally but skip copying to Kobo")
+	dryRun := flag.Bool("dry-run", false, "build EPUBs locally but skip copying to Kobo")
 	flag.Parse()
 
 	cfg, err := LoadConfig(*configPath)
@@ -41,50 +42,71 @@ func main() {
 		os.Exit(0)
 	}
 
-	log.Println("fetching full article content...")
-	articles = EnrichArticles(articles)
-
-	if len(articles) == 0 {
-		log.Println("no articles with extractable content")
-		os.Exit(0)
+	// Group by category so each gets its own EPUB.
+	groups := make(map[string][]Article)
+	for _, a := range articles {
+		groups[a.Category] = append(groups[a.Category], a)
 	}
 
-	epubPath := fmt.Sprintf("briefme-%s.epub", time.Now().Format("2006-01-02"))
-	if err := BuildEPUB(articles, epubPath); err != nil {
-		log.Fatalf("build epub: %v", err)
-	}
-	log.Printf("built EPUB: %s", epubPath)
-
-	sum, err := checksumFile(epubPath)
-	if err != nil {
-		log.Fatalf("checksum: %v", err)
-	}
-	log.Printf("EPUB SHA-256: %s", sum)
-
-	if prevFile, found, err := store.LookupEPUB(sum); err != nil {
-		log.Fatalf("check epub: %v", err)
-	} else if found {
-		if _, statErr := os.Stat(prevFile); statErr == nil {
-			log.Printf("identical EPUB already exists at %s — nothing to do", prevFile)
-			return
+	date := time.Now().Format("2006-01-02")
+	for category, group := range groups {
+		log.Printf("[%s] fetching full article content (%d articles)...", category, len(group))
+		group = EnrichArticles(group)
+		if len(group) == 0 {
+			log.Printf("[%s] no articles with extractable content — skipping", category)
+			continue
 		}
-		log.Printf("checksum matches previous build (%s) but file no longer exists — re-delivering", prevFile)
+
+		title := fmt.Sprintf("Briefme %s – %s", capitalize(category), date)
+		epubPath := fmt.Sprintf("briefme-%s-%s.epub", category, date)
+
+		if err := BuildEPUB(group, epubPath, title); err != nil {
+			log.Fatalf("[%s] build epub: %v", category, err)
+		}
+		log.Printf("[%s] built %s", category, epubPath)
+
+		sum, err := checksumFile(epubPath)
+		if err != nil {
+			log.Fatalf("[%s] checksum: %v", category, err)
+		}
+		log.Printf("[%s] SHA-256: %s", category, sum)
+
+		if prevFile, found, err := store.LookupEPUB(sum); err != nil {
+			log.Fatalf("[%s] check epub: %v", category, err)
+		} else if found {
+			if _, statErr := os.Stat(prevFile); statErr == nil {
+				log.Printf("[%s] identical EPUB already exists at %s — skipping", category, prevFile)
+				continue
+			}
+			log.Printf("[%s] checksum matches previous build (%s) but file no longer exists — re-delivering", category, prevFile)
+		}
+
+		if err := store.MarkSeen(group); err != nil {
+			log.Fatalf("[%s] mark seen: %v", category, err)
+		}
+		if err := store.RecordEPUB(sum, epubPath); err != nil {
+			log.Fatalf("[%s] record epub: %v", category, err)
+		}
+
+		if *dryRun {
+			log.Printf("[%s] --dry-run: skipping copy to Kobo", category)
+			continue
+		}
+
+		if err := DeliverEPUB(cfg.KoboPath, epubPath); err != nil {
+			log.Fatalf("[%s] deliver: %v", category, err)
+		}
+		log.Printf("[%s] copied to Kobo", category)
 	}
 
-	if err := store.MarkSeen(articles); err != nil {
-		log.Fatalf("mark seen: %v", err)
+	if !*dryRun {
+		log.Println("all done — safely eject and enjoy reading")
 	}
-	if err := store.RecordEPUB(sum, epubPath); err != nil {
-		log.Fatalf("record epub: %v", err)
-	}
+}
 
-	if *dryRun {
-		log.Println("--dry-run: skipping copy to Kobo")
-		return
+func capitalize(s string) string {
+	if s == "" {
+		return s
 	}
-
-	if err := DeliverEPUB(cfg.KoboPath, epubPath); err != nil {
-		log.Fatalf("deliver: %v", err)
-	}
-	log.Println("copied to Kobo — safely eject and enjoy reading")
+	return strings.ToUpper(s[:1]) + s[1:]
 }

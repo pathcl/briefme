@@ -8,8 +8,9 @@ import (
 )
 
 type FeedConfig struct {
-	URL  string `yaml:"url"`
-	Name string `yaml:"name"`
+	URL      string `yaml:"url"`
+	Name     string `yaml:"name"`
+	Category string `yaml:"category"` // e.g. "news", "papers"; default "news"
 }
 
 type Config struct {
@@ -32,6 +33,11 @@ func LoadConfig(path string) (*Config, error) {
 
 	if len(cfg.Feeds) == 0 {
 		return nil, fmt.Errorf("at least one feed is required")
+	}
+	for i, f := range cfg.Feeds {
+		if f.Category == "" {
+			cfg.Feeds[i].Category = "news"
+		}
 	}
 	if cfg.MaxPerFeed == 0 {
 		cfg.MaxPerFeed = 5

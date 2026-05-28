@@ -5,7 +5,6 @@ import (
 	"html"
 	"os"
 	"strings"
-	"time"
 
 	epub "github.com/bmaupin/go-epub"
 )
@@ -20,7 +19,7 @@ h2 { font-size: 1.1em; margin: 1.5em 0 0.3em; }
 .toc .feed { font-size: 0.8em; color: #777; margin-left: 0.4em; }
 `
 
-func BuildEPUB(articles []Article, outputPath string) error {
+func BuildEPUB(articles []Article, outputPath, title string) error {
 	if len(articles) == 0 {
 		return fmt.Errorf("no articles to package")
 	}
@@ -35,9 +34,6 @@ func BuildEPUB(articles []Article, outputPath string) error {
 		return fmt.Errorf("write temp css: %w", err)
 	}
 	cssFile.Close()
-
-	date := time.Now().Format("2006-01-02")
-	title := fmt.Sprintf("Briefme – %s", date)
 
 	book := epub.NewEpub(title)
 	book.SetAuthor("briefme")

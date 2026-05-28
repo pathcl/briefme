@@ -60,6 +60,39 @@ feeds:
 	}
 }
 
+func TestLoadConfig_DefaultCategoryIsNews(t *testing.T) {
+	yaml := `
+feeds:
+  - url: "https://example.com/feed.xml"
+    name: "Example"
+`
+	f := writeTempFile(t, yaml)
+	cfg, err := LoadConfig(f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Feeds[0].Category != "news" {
+		t.Errorf("expected default category 'news', got %q", cfg.Feeds[0].Category)
+	}
+}
+
+func TestLoadConfig_ExplicitCategory(t *testing.T) {
+	yaml := `
+feeds:
+  - url: "https://arxiv.org/rss/cs.AI"
+    name: "arXiv"
+    category: "papers"
+`
+	f := writeTempFile(t, yaml)
+	cfg, err := LoadConfig(f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Feeds[0].Category != "papers" {
+		t.Errorf("expected category 'papers', got %q", cfg.Feeds[0].Category)
+	}
+}
+
 func TestLoadConfig_KoboPathOptional(t *testing.T) {
 	yaml := `
 feeds:

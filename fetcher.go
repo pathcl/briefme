@@ -14,6 +14,7 @@ type Article struct {
 	Content     string
 	PublishedAt time.Time
 	FeedName    string
+	Category    string
 }
 
 func FetchArticles(feeds []FeedConfig, max int) ([]Article, error) {
@@ -61,6 +62,7 @@ func FetchArticles(feeds []FeedConfig, max int) ([]Article, error) {
 				Content:     content,
 				PublishedAt: published,
 				FeedName:    fc.Name,
+				Category:    fc.Category,
 			})
 		}
 	}

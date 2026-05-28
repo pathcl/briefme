@@ -12,7 +12,7 @@ import (
 
 func TestBuildEPUB_CreatesFile(t *testing.T) {
 	out := tempEPUBPath(t)
-	if err := BuildEPUB(twoArticles(), out); err != nil {
+	if err := BuildEPUB(twoArticles(), out, "Briefme News – 2026-05-28"); err != nil {
 		t.Fatalf("BuildEPUB error: %v", err)
 	}
 	if _, err := os.Stat(out); err != nil {
@@ -20,9 +20,25 @@ func TestBuildEPUB_CreatesFile(t *testing.T) {
 	}
 }
 
+func TestBuildEPUB_TitleAppearsInOutput(t *testing.T) {
+	out := tempEPUBPath(t)
+	title := "Briefme Papers – 2026-05-28"
+	if err := BuildEPUB(twoArticles(), out, title); err != nil {
+		t.Fatalf("BuildEPUB error: %v", err)
+	}
+	opf := readEPUBFile(t, out, "EPUB/package.opf")
+	if !strings.Contains(opf, title) {
+		t.Errorf("OPF does not contain title %q", title)
+	}
+	index := readEPUBFile(t, out, "EPUB/xhtml/index.xhtml")
+	if !strings.Contains(index, title) {
+		t.Errorf("index page does not contain title %q", title)
+	}
+}
+
 func TestBuildEPUB_ValidZipStructure(t *testing.T) {
 	out := tempEPUBPath(t)
-	if err := BuildEPUB(twoArticles(), out); err != nil {
+	if err := BuildEPUB(twoArticles(), out, "Test"); err != nil {
 		t.Fatalf("BuildEPUB error: %v", err)
 	}
 
@@ -49,7 +65,7 @@ func TestBuildEPUB_HasIndexPage(t *testing.T) {
 		{Title: "Article Two", Content: "<p>two</p>", URL: "https://example.com/2"},
 	}
 	out := tempEPUBPath(t)
-	if err := BuildEPUB(articles, out); err != nil {
+	if err := BuildEPUB(articles, out, "Test"); err != nil {
 		t.Fatalf("BuildEPUB error: %v", err)
 	}
 
@@ -68,7 +84,7 @@ func TestBuildEPUB_IndexLinksToArticles(t *testing.T) {
 		{Title: "Second", Content: "<p>two</p>", URL: "https://example.com/2"},
 	}
 	out := tempEPUBPath(t)
-	if err := BuildEPUB(articles, out); err != nil {
+	if err := BuildEPUB(articles, out, "Test"); err != nil {
 		t.Fatalf("BuildEPUB error: %v", err)
 	}
 
@@ -83,7 +99,7 @@ func TestBuildEPUB_IndexLinksToArticles(t *testing.T) {
 
 func TestBuildEPUB_ArticlesHaveBackLink(t *testing.T) {
 	out := tempEPUBPath(t)
-	if err := BuildEPUB(twoArticles(), out); err != nil {
+	if err := BuildEPUB(twoArticles(), out, "Test"); err != nil {
 		t.Fatalf("BuildEPUB error: %v", err)
 	}
 
@@ -98,7 +114,7 @@ func TestBuildEPUB_ArticleContentPresent(t *testing.T) {
 		{Title: "My Article", Content: "<p>The body of the article lives here.</p>", URL: "https://example.com/1"},
 	}
 	out := tempEPUBPath(t)
-	if err := BuildEPUB(articles, out); err != nil {
+	if err := BuildEPUB(articles, out, "Test"); err != nil {
 		t.Fatalf("BuildEPUB error: %v", err)
 	}
 
@@ -117,7 +133,7 @@ func TestBuildEPUB_HTMLStrippedFromContent(t *testing.T) {
 		},
 	}
 	out := tempEPUBPath(t)
-	if err := BuildEPUB(articles, out); err != nil {
+	if err := BuildEPUB(articles, out, "Test"); err != nil {
 		t.Fatalf("BuildEPUB error: %v", err)
 	}
 
@@ -145,7 +161,7 @@ func TestBuildEPUB_ArticleMetadata(t *testing.T) {
 		},
 	}
 	out := tempEPUBPath(t)
-	if err := BuildEPUB(articles, out); err != nil {
+	if err := BuildEPUB(articles, out, "Test"); err != nil {
 		t.Fatalf("BuildEPUB error: %v", err)
 	}
 
@@ -166,7 +182,7 @@ func TestBuildEPUB_SpecialCharsEscaped(t *testing.T) {
 		},
 	}
 	out := tempEPUBPath(t)
-	if err := BuildEPUB(articles, out); err != nil {
+	if err := BuildEPUB(articles, out, "Test"); err != nil {
 		t.Fatalf("BuildEPUB error: %v", err)
 	}
 
@@ -183,12 +199,12 @@ func TestBuildEPUB_SpecialCharsEscaped(t *testing.T) {
 
 func TestBuildEPUB_OPFManifestComplete(t *testing.T) {
 	articles := []Article{
-		{Title: "One", Content: "<p>a</p>", URL: "https://example.com/1"},
-		{Title: "Two", Content: "<p>b</p>", URL: "https://example.com/2"},
+		{Title: "One",   Content: "<p>a</p>", URL: "https://example.com/1"},
+		{Title: "Two",   Content: "<p>b</p>", URL: "https://example.com/2"},
 		{Title: "Three", Content: "<p>c</p>", URL: "https://example.com/3"},
 	}
 	out := tempEPUBPath(t)
-	if err := BuildEPUB(articles, out); err != nil {
+	if err := BuildEPUB(articles, out, "Test"); err != nil {
 		t.Fatalf("BuildEPUB error: %v", err)
 	}
 
@@ -206,7 +222,7 @@ func TestBuildEPUB_OPFManifestComplete(t *testing.T) {
 
 func TestBuildEPUB_SpineOrderIndexFirst(t *testing.T) {
 	out := tempEPUBPath(t)
-	if err := BuildEPUB(twoArticles(), out); err != nil {
+	if err := BuildEPUB(twoArticles(), out, "Test"); err != nil {
 		t.Fatalf("BuildEPUB error: %v", err)
 	}
 
@@ -224,7 +240,7 @@ func TestBuildEPUB_SpineOrderIndexFirst(t *testing.T) {
 
 func TestBuildEPUB_EmptyArticles(t *testing.T) {
 	out := tempEPUBPath(t)
-	if err := BuildEPUB([]Article{}, out); err == nil {
+	if err := BuildEPUB([]Article{}, out, "Test"); err == nil {
 		t.Fatal("expected error for empty article list")
 	}
 }
