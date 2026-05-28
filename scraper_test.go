@@ -78,23 +78,67 @@ func TestFetchContent_BadURL(t *testing.T) {
 
 func TestFetchContent_Non200Status(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
+		w.WriteHeader(http.StatusForbidden)
 	}))
 	defer srv.Close()
 
 	_, err := FetchContent(srv.URL)
 	if err == nil {
-		t.Fatal("expected error for 404 response")
+		t.Fatal("expected error for 403 response")
 	}
 }
 
-func TestEnrichArticles_FallsBackOnError(t *testing.T) {
+func TestEnrichArticles_DropsFailedArticles(t *testing.T) {
 	articles := []Article{
-		{Title: "Reachable", URL: "", Content: "original content"},
+		{Title: "Bad article", URL: "", Content: "rss garbage"},
 	}
-	// Empty URL will fail to fetch — should keep original content.
 	result := EnrichArticles(articles)
-	if result[0].Content != "original content" {
-		t.Errorf("expected fallback to original content, got: %s", result[0].Content)
+	if len(result) != 0 {
+		t.Errorf("expected failed article to be dropped, got %d articles", len(result))
+	}
+}
+
+func TestEnrichArticles_KeepsSuccessfulArticles(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write([]byte(realArticleHTML))
+	}))
+	defer srv.Close()
+
+	articles := []Article{
+		{Title: "Good article", URL: srv.URL, Content: "rss excerpt"},
+	}
+	result := EnrichArticles(articles)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 article, got %d", len(result))
+	}
+	if result[0].Content == "rss excerpt" {
+		t.Error("content was not replaced with scraped version")
+	}
+	if !strings.Contains(result[0].Content, "bioluminescent") {
+		t.Error("scraped content not present in result")
+	}
+}
+
+func TestEnrichArticles_MixedResults(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write([]byte(realArticleHTML))
+	}))
+	defer srv.Close()
+
+	articles := []Article{
+		{Title: "Good",    URL: srv.URL, Content: "rss excerpt"},
+		{Title: "Paywalled", URL: "",   Content: "rss garbage"},
+		{Title: "Good 2",  URL: srv.URL, Content: "rss excerpt 2"},
+	}
+	result := EnrichArticles(articles)
+	if len(result) != 2 {
+		t.Errorf("expected 2 successful articles, got %d", len(result))
+	}
+	for _, a := range result {
+		if a.Title == "Paywalled" {
+			t.Error("failed article should not appear in result")
+		}
 	}
 }

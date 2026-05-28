@@ -45,16 +45,20 @@ func FetchContent(articleURL string) (string, error) {
 	return article.Content, nil
 }
 
-// EnrichArticles fetches the full text for each article URL, replacing the
-// RSS excerpt. Falls back to the original RSS content on any error.
+// EnrichArticles fetches the full text for each article URL. Articles that
+// cannot be fetched or parsed are dropped entirely — partial RSS metadata
+// is not a useful substitute for real content.
 func EnrichArticles(articles []Article) []Article {
-	for i, a := range articles {
+	var out []Article
+	for _, a := range articles {
 		content, err := FetchContent(a.URL)
 		if err != nil {
-			log.Printf("warn: could not fetch article content (%v) — using RSS excerpt", err)
+			log.Printf("skip %q: %v", a.Title, err)
 			continue
 		}
-		articles[i].Content = content
+		a.Content = content
+		out = append(out, a)
 	}
-	return articles
+	log.Printf("%d/%d articles fetched successfully", len(out), len(articles))
+	return out
 }
