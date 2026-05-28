@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -48,8 +49,16 @@ func main() {
 		groups[a.Category] = append(groups[a.Category], a)
 	}
 
+	// Sort categories for deterministic ordering.
+	categories := make([]string, 0, len(groups))
+	for c := range groups {
+		categories = append(categories, c)
+	}
+	sort.Strings(categories)
+
 	date := time.Now().Format("2006-01-02")
-	for category, group := range groups {
+	for _, category := range categories {
+		group := groups[category]
 		log.Printf("[%s] fetching full article content (%d articles)...", category, len(group))
 		group = EnrichArticles(group)
 		if len(group) == 0 {
@@ -61,18 +70,21 @@ func main() {
 		epubPath := fmt.Sprintf("briefme-%s-%s.epub", category, date)
 
 		if err := BuildEPUB(group, epubPath, title); err != nil {
-			log.Fatalf("[%s] build epub: %v", category, err)
+			log.Printf("[%s] build epub failed: %v — skipping", category, err)
+			continue
 		}
 		log.Printf("[%s] built %s", category, epubPath)
 
 		sum, err := checksumFile(epubPath)
 		if err != nil {
-			log.Fatalf("[%s] checksum: %v", category, err)
+			log.Printf("[%s] checksum failed: %v — skipping", category, err)
+			continue
 		}
 		log.Printf("[%s] SHA-256: %s", category, sum)
 
 		if prevFile, found, err := store.LookupEPUB(sum); err != nil {
-			log.Fatalf("[%s] check epub: %v", category, err)
+			log.Printf("[%s] epub lookup failed: %v — skipping", category, err)
+			continue
 		} else if found {
 			if _, statErr := os.Stat(prevFile); statErr == nil {
 				log.Printf("[%s] identical EPUB already exists at %s — skipping", category, prevFile)
@@ -82,10 +94,12 @@ func main() {
 		}
 
 		if err := store.MarkSeen(group); err != nil {
-			log.Fatalf("[%s] mark seen: %v", category, err)
+			log.Printf("[%s] mark seen failed: %v — skipping", category, err)
+			continue
 		}
 		if err := store.RecordEPUB(sum, epubPath); err != nil {
-			log.Fatalf("[%s] record epub: %v", category, err)
+			log.Printf("[%s] record epub failed: %v — skipping", category, err)
+			continue
 		}
 
 		if *dryRun {
@@ -94,7 +108,8 @@ func main() {
 		}
 
 		if err := DeliverEPUB(cfg.KoboPath, epubPath); err != nil {
-			log.Fatalf("[%s] deliver: %v", category, err)
+			log.Printf("[%s] deliver failed: %v", category, err)
+			continue
 		}
 		log.Printf("[%s] copied to Kobo", category)
 	}
