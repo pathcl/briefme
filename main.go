@@ -10,7 +10,7 @@ import (
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "path to config file")
-	dryRun := flag.Bool("dry-run", false, "build EPUB but skip sending")
+	dryRun := flag.Bool("dry-run", false, "build EPUB locally but skip copying to Kobo")
 	flag.Parse()
 
 	cfg, err := LoadConfig(*configPath)
@@ -36,12 +36,12 @@ func main() {
 	log.Printf("built EPUB: %s", epubPath)
 
 	if *dryRun {
-		log.Println("--dry-run: skipping send")
+		log.Println("--dry-run: skipping copy to Kobo")
 		return
 	}
 
-	if err := SendEPUB(cfg.SMTP, cfg.KoboEmail, epubPath); err != nil {
-		log.Fatalf("send: %v", err)
+	if err := DeliverEPUB(cfg.KoboPath, epubPath); err != nil {
+		log.Fatalf("deliver: %v", err)
 	}
-	log.Printf("sent to %s", cfg.KoboEmail)
+	log.Println("copied to Kobo — safely eject and enjoy reading")
 }

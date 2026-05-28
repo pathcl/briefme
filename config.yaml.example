@@ -1,16 +1,18 @@
 feeds:
   - url: "https://hnrss.org/frontpage"
     name: "Hacker News"
-  - url: "https://feeds.feedburner.com/oreilly/radar/radar"
-    name: "O'Reilly Radar"
+  - url: "https://example.com/feed.xml"
+    name: "My Blog"
 
-kobo_email: "your-kobo-email@kobo.com"
-
-smtp:
-  host: "smtp.gmail.com"
-  port: 587
-  username: "you@gmail.com"
-  password: "your-app-password"
-  from: "you@gmail.com"
+# Mount path of your Kobo when connected via USB.
+# Leave empty to let briefme auto-detect it.
+#
+# Common paths:
+#   macOS:   /Volumes/KOBOeReader
+#   Linux:   /media/<your-username>/KOBOeReader
+#            /run/media/<your-username>/KOBOeReader
+#   Windows: E:\   (or whichever drive letter Windows assigns)
+#
+kobo_path: ""
 
 max_articles: 20

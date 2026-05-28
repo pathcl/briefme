@@ -10,13 +10,7 @@ func TestLoadConfig_Valid(t *testing.T) {
 feeds:
   - url: "https://example.com/feed.xml"
     name: "Example"
-kobo_email: "me@kobo.com"
-smtp:
-  host: "smtp.gmail.com"
-  port: 587
-  username: "user@gmail.com"
-  password: "secret"
-  from: "user@gmail.com"
+kobo_path: "/media/user/KOBOeReader"
 max_articles: 10
 `
 	f := writeTempFile(t, yaml)
@@ -30,43 +24,18 @@ max_articles: 10
 	if cfg.Feeds[0].URL != "https://example.com/feed.xml" {
 		t.Errorf("unexpected feed URL: %s", cfg.Feeds[0].URL)
 	}
-	if cfg.KoboEmail != "me@kobo.com" {
-		t.Errorf("unexpected kobo_email: %s", cfg.KoboEmail)
+	if cfg.KoboPath != "/media/user/KOBOeReader" {
+		t.Errorf("unexpected kobo_path: %s", cfg.KoboPath)
 	}
 	if cfg.MaxArticles != 10 {
 		t.Errorf("expected max_articles 10, got %d", cfg.MaxArticles)
 	}
 }
 
-func TestLoadConfig_MissingKoboEmail(t *testing.T) {
-	yaml := `
-feeds:
-  - url: "https://example.com/feed.xml"
-    name: "Example"
-smtp:
-  host: "smtp.gmail.com"
-  port: 587
-  username: "user@gmail.com"
-  password: "secret"
-  from: "user@gmail.com"
-`
-	f := writeTempFile(t, yaml)
-	_, err := LoadConfig(f)
-	if err == nil {
-		t.Fatal("expected error for missing kobo_email")
-	}
-}
-
 func TestLoadConfig_NoFeeds(t *testing.T) {
 	yaml := `
 feeds: []
-kobo_email: "me@kobo.com"
-smtp:
-  host: "smtp.gmail.com"
-  port: 587
-  username: "user@gmail.com"
-  password: "secret"
-  from: "user@gmail.com"
+kobo_path: "/media/user/KOBOeReader"
 `
 	f := writeTempFile(t, yaml)
 	_, err := LoadConfig(f)
@@ -80,13 +49,6 @@ func TestLoadConfig_DefaultMaxArticles(t *testing.T) {
 feeds:
   - url: "https://example.com/feed.xml"
     name: "Example"
-kobo_email: "me@kobo.com"
-smtp:
-  host: "smtp.gmail.com"
-  port: 587
-  username: "user@gmail.com"
-  password: "secret"
-  from: "user@gmail.com"
 `
 	f := writeTempFile(t, yaml)
 	cfg, err := LoadConfig(f)
@@ -95,6 +57,22 @@ smtp:
 	}
 	if cfg.MaxArticles != 20 {
 		t.Errorf("expected default max_articles 20, got %d", cfg.MaxArticles)
+	}
+}
+
+func TestLoadConfig_KoboPathOptional(t *testing.T) {
+	yaml := `
+feeds:
+  - url: "https://example.com/feed.xml"
+    name: "Example"
+`
+	f := writeTempFile(t, yaml)
+	cfg, err := LoadConfig(f)
+	if err != nil {
+		t.Fatalf("kobo_path should be optional (auto-detect at runtime): %v", err)
+	}
+	if cfg.KoboPath != "" {
+		t.Errorf("expected empty kobo_path, got %s", cfg.KoboPath)
 	}
 }
 
