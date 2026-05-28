@@ -24,7 +24,21 @@ func DeliverEPUB(koboPath, epubPath string) error {
 	}
 
 	dst := filepath.Join(koboPath, filepath.Base(epubPath))
-	return copyFile(epubPath, dst)
+	if err := copyFile(epubPath, dst); err != nil {
+		if os.IsPermission(err) {
+			return fmt.Errorf(
+				"permission denied writing to %q\n\n"+
+					"The Kobo is mounted without write access for your user.\n"+
+					"Fix with a udev rule — add this to /etc/udev/rules.d/99-kobo.rules:\n\n"+
+					"  ACTION==\"add\", SUBSYSTEM==\"block\", ENV{ID_FS_LABEL}==\"KOBOeReader\",\\\n"+
+					"    RUN+=\"/bin/mount -o remount,uid=%d /dev/%%k %s\"\n\n"+
+					"Then reload: sudo udevadm control --reload && sudo udevadm trigger",
+				koboPath, os.Getuid(), koboPath,
+			)
+		}
+		return err
+	}
+	return nil
 }
 
 func detectKoboPath() (string, error) {

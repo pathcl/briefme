@@ -83,7 +83,26 @@ Because the Kobo needs to be physically connected, automation is most useful as 
 briefme --config ~/briefme/config.yaml && echo "Kobo ready — safe to eject"
 ```
 
-On Linux you can trigger it automatically on USB mount with a udev rule:
+### Linux: fix "permission denied" on write
+
+FAT32 devices mount with root ownership by default, so your user can't write to the Kobo. Fix it once with a udev rule:
+
+```
+# /etc/udev/rules.d/99-kobo.rules
+ACTION=="add", SUBSYSTEM=="block", ENV{ID_FS_LABEL}=="KOBOeReader", \
+  RUN+="/bin/mount -o remount,uid=<your-uid> /dev/%k /media/kobo"
+```
+
+Replace `<your-uid>` with the output of `id -u`. Then reload:
+
+```bash
+sudo udevadm control --reload
+sudo udevadm trigger
+```
+
+Replug the Kobo and `briefme` will have write access.
+
+### Linux: run on USB connect
 
 ```
 # /etc/udev/rules.d/99-kobo-sync.rules
