@@ -29,6 +29,9 @@ func main() {
 	}
 	log.Printf("fetched %d articles", len(articles))
 
+	log.Println("fetching full article content...")
+	articles = EnrichArticles(articles)
+
 	epubPath := fmt.Sprintf("briefme-%s.epub", time.Now().Format("2006-01-02"))
 	if err := BuildEPUB(articles, epubPath); err != nil {
 		log.Fatalf("build epub: %v", err)
