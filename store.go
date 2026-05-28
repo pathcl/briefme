@@ -62,14 +62,18 @@ func (s *Store) FilterNew(articles []Article) ([]Article, error) {
 	return out, nil
 }
 
-// EPUBSeen reports whether an EPUB with this SHA-256 has been produced before.
-func (s *Store) EPUBSeen(sha256sum string) (bool, error) {
-	var n int
-	err := s.db.QueryRow("SELECT COUNT(*) FROM epubs WHERE sha256 = ?", sha256sum).Scan(&n)
-	if err != nil {
-		return false, fmt.Errorf("query epub checksum: %w", err)
+// LookupEPUB checks whether an EPUB with this SHA-256 was previously produced.
+// If found, it also returns the filename that was recorded at the time.
+// The caller is responsible for checking whether that file still exists on disk.
+func (s *Store) LookupEPUB(sha256sum string) (filename string, found bool, err error) {
+	qErr := s.db.QueryRow("SELECT filename FROM epubs WHERE sha256 = ?", sha256sum).Scan(&filename)
+	if qErr == sql.ErrNoRows {
+		return "", false, nil
 	}
-	return n > 0, nil
+	if qErr != nil {
+		return "", false, fmt.Errorf("lookup epub: %w", qErr)
+	}
+	return filename, true, nil
 }
 
 // RecordEPUB stores the checksum and filename of a produced EPUB.

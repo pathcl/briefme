@@ -61,11 +61,14 @@ func main() {
 	}
 	log.Printf("EPUB SHA-256: %s", sum)
 
-	if seen, err := store.EPUBSeen(sum); err != nil {
+	if prevFile, found, err := store.LookupEPUB(sum); err != nil {
 		log.Fatalf("check epub: %v", err)
-	} else if seen {
-		log.Println("identical EPUB already produced and delivered — nothing to do")
-		return
+	} else if found {
+		if _, statErr := os.Stat(prevFile); statErr == nil {
+			log.Printf("identical EPUB already exists at %s — nothing to do", prevFile)
+			return
+		}
+		log.Printf("checksum matches previous build (%s) but file no longer exists — re-delivering", prevFile)
 	}
 
 	if err := store.MarkSeen(articles); err != nil {

@@ -104,28 +104,34 @@ func TestStore_RecordsMetadata(t *testing.T) {
 
 // --- EPUB checksum deduplication ---
 
-func TestStore_EPUBSeen_NewChecksum(t *testing.T) {
+func TestStore_LookupEPUB_NotFound(t *testing.T) {
 	s := openTestStore(t)
-	seen, err := s.EPUBSeen("abc123")
+	filename, found, err := s.LookupEPUB("abc123")
 	if err != nil {
-		t.Fatalf("EPUBSeen: %v", err)
+		t.Fatalf("LookupEPUB: %v", err)
 	}
-	if seen {
-		t.Error("unknown checksum should not be seen")
+	if found {
+		t.Error("unknown checksum should not be found")
+	}
+	if filename != "" {
+		t.Errorf("expected empty filename, got %q", filename)
 	}
 }
 
-func TestStore_EPUBSeen_KnownChecksum(t *testing.T) {
+func TestStore_LookupEPUB_ReturnsFilename(t *testing.T) {
 	s := openTestStore(t)
 	if err := s.RecordEPUB("abc123", "briefme-2026-05-28.epub"); err != nil {
 		t.Fatalf("RecordEPUB: %v", err)
 	}
-	seen, err := s.EPUBSeen("abc123")
+	filename, found, err := s.LookupEPUB("abc123")
 	if err != nil {
-		t.Fatalf("EPUBSeen: %v", err)
+		t.Fatalf("LookupEPUB: %v", err)
 	}
-	if !seen {
-		t.Error("checksum should be seen after RecordEPUB")
+	if !found {
+		t.Error("checksum should be found after RecordEPUB")
+	}
+	if filename != "briefme-2026-05-28.epub" {
+		t.Errorf("expected filename briefme-2026-05-28.epub, got %q", filename)
 	}
 }
 
@@ -136,6 +142,34 @@ func TestStore_RecordEPUB_Idempotent(t *testing.T) {
 	}
 	if err := s.RecordEPUB("abc123", "briefme.epub"); err != nil {
 		t.Fatalf("second RecordEPUB should not error: %v", err)
+	}
+}
+
+func TestStore_LookupEPUB_FileDeletedShouldReDeliver(t *testing.T) {
+	// Simulates the scenario: DB has a record but the file was deleted.
+	// LookupEPUB itself just returns the filename; the caller (main) is
+	// responsible for the os.Stat check. This test verifies LookupEPUB
+	// faithfully returns whatever filename was recorded, even if the file
+	// no longer exists — so the caller can make the right decision.
+	s := openTestStore(t)
+	deleted := "/tmp/briefme-deleted.epub"
+	if err := s.RecordEPUB("deadbeef", deleted); err != nil {
+		t.Fatalf("RecordEPUB: %v", err)
+	}
+	filename, found, err := s.LookupEPUB("deadbeef")
+	if err != nil {
+		t.Fatalf("LookupEPUB: %v", err)
+	}
+	if !found {
+		t.Fatal("expected record to be found")
+	}
+	// The file does not exist — caller must check os.Stat independently.
+	if _, statErr := os.Stat(filename); statErr == nil {
+		t.Skip("file unexpectedly exists; skipping deletion scenario")
+	}
+	// Confirm the filename round-trips correctly so the caller can Stat it.
+	if filename != deleted {
+		t.Errorf("expected %q, got %q", deleted, filename)
 	}
 }
 
