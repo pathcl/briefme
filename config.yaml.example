@@ -1,8 +1,12 @@
 feeds:
   - url: "https://hnrss.org/frontpage"
     name: "Hacker News"
-  - url: "https://example.com/feed.xml"
-    name: "My Blog"
+  - url: "https://feeds.arstechnica.com/arstechnica/index"
+    name: "Ars Technica"
+  - url: "https://api.quantamagazine.org/feed/"
+    name: "Quanta Magazine"
+  - url: "https://www.theregister.com/headlines.atom"
+    name: "The Register"
 
 # Mount path of your Kobo when connected via USB.
 # Leave empty to let briefme auto-detect it.
