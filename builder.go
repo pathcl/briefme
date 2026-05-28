@@ -110,6 +110,6 @@ func buildArticleHTML(a Article) string {
 	if meta != "" {
 		fmt.Fprintf(&b, "<p class=\"meta\">%s</p>\n", meta)
 	}
-	fmt.Fprintf(&b, "<div>%s</div>", a.Content)
+	fmt.Fprintf(&b, "<div>%s</div>", extractText(a.Content))
 	return b.String()
 }
