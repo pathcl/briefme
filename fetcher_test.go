@@ -68,28 +68,30 @@ func TestFetchArticles_FallsBackToDescription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-
-	// Article Two has no content:encoded, should use Description
 	a := articles[1]
 	if a.Content != "Short description two" {
 		t.Errorf("expected description as fallback, got: %s", a.Content)
 	}
 }
 
-func TestFetchArticles_MaxLimit(t *testing.T) {
+func TestFetchArticles_PerFeedLimit(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/rss+xml")
-		w.Write([]byte(sampleRSS))
+		w.Write([]byte(sampleRSS)) // 2 articles per feed
 	}))
 	defer srv.Close()
 
-	feeds := []FeedConfig{{URL: srv.URL, Name: "Test"}}
+	// 2 feeds × max 1 per feed = 2 total, not 1
+	feeds := []FeedConfig{
+		{URL: srv.URL + "?a", Name: "Feed A"},
+		{URL: srv.URL + "?b", Name: "Feed B"},
+	}
 	articles, err := FetchArticles(feeds, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(articles) != 1 {
-		t.Errorf("expected max 1 article, got %d", len(articles))
+	if len(articles) != 2 {
+		t.Errorf("expected 1 article per feed (2 total), got %d", len(articles))
 	}
 }
 
@@ -100,7 +102,6 @@ func TestFetchArticles_DeduplicatesByURL(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Same feed twice — should deduplicate
 	feeds := []FeedConfig{
 		{URL: srv.URL, Name: "Feed A"},
 		{URL: srv.URL, Name: "Feed B"},

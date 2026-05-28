@@ -27,8 +27,9 @@ func FetchArticles(feeds []FeedConfig, max int) ([]Article, error) {
 			return nil, fmt.Errorf("fetch feed %q: %w", fc.URL, err)
 		}
 
+		feedCount := 0
 		for _, item := range feed.Items {
-			if len(articles) >= max {
+			if feedCount >= max {
 				break
 			}
 			url := item.Link
@@ -52,6 +53,7 @@ func FetchArticles(feeds []FeedConfig, max int) ([]Article, error) {
 				published = *item.PublishedParsed
 			}
 
+			feedCount++
 			articles = append(articles, Article{
 				Title:       item.Title,
 				Author:      author,

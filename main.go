@@ -18,8 +18,8 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
-	log.Printf("fetching from %d feed(s), max %d articles", len(cfg.Feeds), cfg.MaxArticles)
-	articles, err := FetchArticles(cfg.Feeds, cfg.MaxArticles)
+	log.Printf("fetching from %d feed(s), max %d articles each", len(cfg.Feeds), cfg.MaxPerFeed)
+	articles, err := FetchArticles(cfg.Feeds, cfg.MaxPerFeed)
 	if err != nil {
 		log.Fatalf("fetch: %v", err)
 	}

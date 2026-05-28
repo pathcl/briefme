@@ -13,9 +13,9 @@ type FeedConfig struct {
 }
 
 type Config struct {
-	Feeds       []FeedConfig `yaml:"feeds"`
-	KoboPath    string       `yaml:"kobo_path"`    // mount path; empty = auto-detect
-	MaxArticles int          `yaml:"max_articles"`
+	Feeds      []FeedConfig `yaml:"feeds"`
+	KoboPath   string       `yaml:"kobo_path"`   // mount path; empty = auto-detect
+	MaxPerFeed int          `yaml:"max_per_feed"` // articles per feed; default 5
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -32,8 +32,8 @@ func LoadConfig(path string) (*Config, error) {
 	if len(cfg.Feeds) == 0 {
 		return nil, fmt.Errorf("at least one feed is required")
 	}
-	if cfg.MaxArticles == 0 {
-		cfg.MaxArticles = 20
+	if cfg.MaxPerFeed == 0 {
+		cfg.MaxPerFeed = 5
 	}
 
 	return &cfg, nil

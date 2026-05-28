@@ -11,7 +11,7 @@ feeds:
   - url: "https://example.com/feed.xml"
     name: "Example"
 kobo_path: "/media/user/KOBOeReader"
-max_articles: 10
+max_per_feed: 10
 `
 	f := writeTempFile(t, yaml)
 	cfg, err := LoadConfig(f)
@@ -27,8 +27,8 @@ max_articles: 10
 	if cfg.KoboPath != "/media/user/KOBOeReader" {
 		t.Errorf("unexpected kobo_path: %s", cfg.KoboPath)
 	}
-	if cfg.MaxArticles != 10 {
-		t.Errorf("expected max_articles 10, got %d", cfg.MaxArticles)
+	if cfg.MaxPerFeed != 10 {
+		t.Errorf("expected max_per_feed 10, got %d", cfg.MaxPerFeed)
 	}
 }
 
@@ -44,7 +44,7 @@ kobo_path: "/media/user/KOBOeReader"
 	}
 }
 
-func TestLoadConfig_DefaultMaxArticles(t *testing.T) {
+func TestLoadConfig_DefaultMaxPerFeed(t *testing.T) {
 	yaml := `
 feeds:
   - url: "https://example.com/feed.xml"
@@ -55,8 +55,8 @@ feeds:
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.MaxArticles != 20 {
-		t.Errorf("expected default max_articles 20, got %d", cfg.MaxArticles)
+	if cfg.MaxPerFeed != 5 {
+		t.Errorf("expected default max_per_feed 5, got %d", cfg.MaxPerFeed)
 	}
 }
 

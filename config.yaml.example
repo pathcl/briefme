@@ -19,4 +19,4 @@ feeds:
 #
 kobo_path: ""
 
-max_articles: 20
+max_per_feed: 5   # articles fetched per feed; total = feeds × max_per_feed
