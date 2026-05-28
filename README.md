@@ -85,22 +85,26 @@ briefme --config ~/briefme/config.yaml && echo "Kobo ready — safe to eject"
 
 ### Linux: fix "permission denied" on write
 
-FAT32 devices mount with root ownership by default, so your user can't write to the Kobo. Fix it once with a udev rule:
+FAT32 devices mount without a `uid=` option by default, so ownership goes to root. `remount` cannot change `uid` on FAT — you must unmount and remount from scratch.
 
-```
-# /etc/udev/rules.d/99-kobo.rules
-ACTION=="add", SUBSYSTEM=="block", ENV{ID_FS_LABEL}=="KOBOeReader", \
-  RUN+="/bin/mount -o remount,uid=<your-uid> /dev/%k /media/kobo"
-```
-
-Replace `<your-uid>` with the output of `id -u`. Then reload:
+**Quick fix** (lasts until next replug):
 
 ```bash
-sudo udevadm control --reload
-sudo udevadm trigger
+sudo umount /media/kobo
+sudo mount -t vfat -o uid=$(id -u),gid=$(id -g),fmask=0022,dmask=0022 /dev/sda /media/kobo
 ```
 
-Replug the Kobo and `briefme` will have write access.
+**Permanent fix** via `/etc/fstab`:
+
+```bash
+# Find the UUID of the device
+sudo blkid /dev/sda
+
+# Add to /etc/fstab (replace UUID, device, and uid/gid with your values):
+UUID=XXXX-XXXX  /media/kobo  vfat  uid=1000,gid=1000,fmask=0022,dmask=0022,nofail  0  0
+```
+
+After editing fstab: `sudo umount /media/kobo && sudo mount -a` to verify, then replug.
 
 ### Linux: run on USB connect
 

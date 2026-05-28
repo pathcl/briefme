@@ -28,12 +28,16 @@ func DeliverEPUB(koboPath, epubPath string) error {
 		if os.IsPermission(err) {
 			return fmt.Errorf(
 				"permission denied writing to %q\n\n"+
-					"The Kobo is mounted without write access for your user.\n"+
-					"Fix with a udev rule — add this to /etc/udev/rules.d/99-kobo.rules:\n\n"+
-					"  ACTION==\"add\", SUBSYSTEM==\"block\", ENV{ID_FS_LABEL}==\"KOBOeReader\",\\\n"+
-					"    RUN+=\"/bin/mount -o remount,uid=%d /dev/%%k %s\"\n\n"+
-					"Then reload: sudo udevadm control --reload && sudo udevadm trigger",
-				koboPath, os.Getuid(), koboPath,
+					"The Kobo is mounted without uid= so ownership defaults to root.\n"+
+					"Note: 'remount' cannot change uid on FAT — you must unmount and remount:\n\n"+
+					"  sudo umount %s\n"+
+					"  sudo mount -t vfat -o uid=%d,gid=%d,fmask=0022,dmask=0022 <device> %s\n\n"+
+					"For a permanent fix add this to /etc/fstab (replace UUID and device):\n"+
+					"  UUID=<uuid>  %s  vfat  uid=%d,gid=%d,fmask=0022,dmask=0022,nofail  0  0\n"+
+					"Find the UUID with: sudo blkid <device>",
+				koboPath,
+				koboPath, os.Getuid(), os.Getgid(), koboPath,
+				koboPath, os.Getuid(), os.Getgid(),
 			)
 		}
 		return err
