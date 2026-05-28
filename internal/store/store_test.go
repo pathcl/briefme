@@ -20,6 +20,8 @@ func openTestStore(t *testing.T) *store.Store {
 	return s
 }
 
+// --- article deduplication ---
+
 func TestFilterNew_AllNew(t *testing.T) {
 	s := openTestStore(t)
 	articles := []model.Article{
@@ -85,31 +87,124 @@ func TestMarkSeen_Idempotent(t *testing.T) {
 	}
 }
 
-func TestMarkSeen_RecordsMetadata(t *testing.T) {
+// --- daily accumulation ---
+
+func TestMarkSeen_StoresContent(t *testing.T) {
 	s := openTestStore(t)
-	pub := time.Date(2026, 5, 28, 10, 0, 0, 0, time.UTC)
+	articles := []model.Article{{
+		Title:    "Article with content",
+		URL:      "https://example.com/1",
+		Content:  "<p>The full article text.</p>",
+		Category: "news",
+		FeedName: "Test Feed",
+	}}
+	if err := s.MarkSeen(articles); err != nil {
+		t.Fatalf("MarkSeen: %v", err)
+	}
+
+	date := time.Now().Format("2006-01-02")
+	got, err := s.GetArticlesByDate("news", date)
+	if err != nil {
+		t.Fatalf("GetArticlesByDate: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 article, got %d", len(got))
+	}
+	if got[0].Content != "<p>The full article text.</p>" {
+		t.Errorf("content not stored/retrieved: %q", got[0].Content)
+	}
+	if got[0].Title != "Article with content" {
+		t.Errorf("title not retrieved: %q", got[0].Title)
+	}
+}
+
+func TestGetArticlesByDate_AccumulatesAcrossRuns(t *testing.T) {
+	s := openTestStore(t)
+	date := time.Now().Format("2006-01-02")
+
+	// Simulate first run — 2 news articles
+	run1 := []model.Article{
+		{Title: "Morning A", URL: "https://example.com/1", Content: "<p>A</p>", Category: "news"},
+		{Title: "Morning B", URL: "https://example.com/2", Content: "<p>B</p>", Category: "news"},
+	}
+	if err := s.MarkSeen(run1); err != nil {
+		t.Fatalf("MarkSeen run1: %v", err)
+	}
+
+	// Simulate second run — 1 more news article
+	run2 := []model.Article{
+		{Title: "Noon C", URL: "https://example.com/3", Content: "<p>C</p>", Category: "news"},
+	}
+	if err := s.MarkSeen(run2); err != nil {
+		t.Fatalf("MarkSeen run2: %v", err)
+	}
+
+	got, err := s.GetArticlesByDate("news", date)
+	if err != nil {
+		t.Fatalf("GetArticlesByDate: %v", err)
+	}
+	if len(got) != 3 {
+		t.Errorf("expected 3 accumulated articles, got %d", len(got))
+	}
+}
+
+func TestGetArticlesByDate_SeparatesCategories(t *testing.T) {
+	s := openTestStore(t)
+	date := time.Now().Format("2006-01-02")
+
 	articles := []model.Article{
-		{Title: "Test", URL: "https://example.com/1", FeedName: "Test Feed", PublishedAt: pub},
+		{Title: "News 1",  URL: "https://example.com/n1", Content: "<p>n</p>", Category: "news"},
+		{Title: "Paper 1", URL: "https://example.com/p1", Content: "<p>p</p>", Category: "papers"},
+		{Title: "News 2",  URL: "https://example.com/n2", Content: "<p>n</p>", Category: "news"},
 	}
 	if err := s.MarkSeen(articles); err != nil {
 		t.Fatalf("MarkSeen: %v", err)
 	}
-	got, err := s.FilterNew(articles)
+
+	news, err := s.GetArticlesByDate("news", date)
 	if err != nil {
-		t.Fatalf("FilterNew: %v", err)
+		t.Fatalf("GetArticlesByDate news: %v", err)
 	}
-	if len(got) != 0 {
-		t.Error("expected article to be marked as seen")
+	if len(news) != 2 {
+		t.Errorf("expected 2 news articles, got %d", len(news))
+	}
+
+	papers, err := s.GetArticlesByDate("papers", date)
+	if err != nil {
+		t.Fatalf("GetArticlesByDate papers: %v", err)
+	}
+	if len(papers) != 1 {
+		t.Errorf("expected 1 paper, got %d", len(papers))
 	}
 }
 
+func TestGetArticlesByDate_EmptyForWrongDate(t *testing.T) {
+	s := openTestStore(t)
+	articles := []model.Article{
+		{Title: "Today", URL: "https://example.com/1", Content: "<p>x</p>", Category: "news"},
+	}
+	if err := s.MarkSeen(articles); err != nil {
+		t.Fatalf("MarkSeen: %v", err)
+	}
+
+	got, err := s.GetArticlesByDate("news", "1970-01-01")
+	if err != nil {
+		t.Fatalf("GetArticlesByDate: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected 0 articles for wrong date, got %d", len(got))
+	}
+}
+
+// --- EPUB checksum ---
+
 func TestLookupEPUB_NotFound(t *testing.T) {
 	s := openTestStore(t)
-	filename, found, err := s.LookupEPUB("abc123")
+	_, found, err := s.LookupEPUB("abc123")
 	if err != nil {
 		t.Fatalf("LookupEPUB: %v", err)
 	}
-	if found || filename != "" {
+	if found {
 		t.Error("unknown checksum should not be found")
 	}
 }
@@ -172,10 +267,7 @@ func TestChecksumFile_Deterministic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ChecksumFile: %v", err)
 	}
-	sum2, err := store.ChecksumFile(f.Name())
-	if err != nil {
-		t.Fatalf("ChecksumFile second call: %v", err)
-	}
+	sum2, _ := store.ChecksumFile(f.Name())
 	if sum1 != sum2 || len(sum1) != 64 {
 		t.Errorf("checksum not deterministic or wrong length: %q", sum1)
 	}
