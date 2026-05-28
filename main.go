@@ -55,8 +55,24 @@ func main() {
 	}
 	log.Printf("built EPUB: %s", epubPath)
 
+	sum, err := checksumFile(epubPath)
+	if err != nil {
+		log.Fatalf("checksum: %v", err)
+	}
+	log.Printf("EPUB SHA-256: %s", sum)
+
+	if seen, err := store.EPUBSeen(sum); err != nil {
+		log.Fatalf("check epub: %v", err)
+	} else if seen {
+		log.Println("identical EPUB already produced and delivered — nothing to do")
+		return
+	}
+
 	if err := store.MarkSeen(articles); err != nil {
 		log.Fatalf("mark seen: %v", err)
+	}
+	if err := store.RecordEPUB(sum, epubPath); err != nil {
+		log.Fatalf("record epub: %v", err)
 	}
 
 	if *dryRun {

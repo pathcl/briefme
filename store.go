@@ -1,8 +1,12 @@
 package main
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
+	"io"
+	"os"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -24,6 +28,11 @@ func OpenStore(path string) (*Store, error) {
 		feed        TEXT NOT NULL DEFAULT '',
 		published   DATETIME,
 		recorded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE IF NOT EXISTS epubs (
+		sha256      TEXT PRIMARY KEY,
+		filename    TEXT NOT NULL,
+		produced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	)`)
 	if err != nil {
 		db.Close()
@@ -51,6 +60,43 @@ func (s *Store) FilterNew(articles []Article) ([]Article, error) {
 		}
 	}
 	return out, nil
+}
+
+// EPUBSeen reports whether an EPUB with this SHA-256 has been produced before.
+func (s *Store) EPUBSeen(sha256sum string) (bool, error) {
+	var n int
+	err := s.db.QueryRow("SELECT COUNT(*) FROM epubs WHERE sha256 = ?", sha256sum).Scan(&n)
+	if err != nil {
+		return false, fmt.Errorf("query epub checksum: %w", err)
+	}
+	return n > 0, nil
+}
+
+// RecordEPUB stores the checksum and filename of a produced EPUB.
+// Duplicates are silently ignored.
+func (s *Store) RecordEPUB(sha256sum, filename string) error {
+	_, err := s.db.Exec(
+		"INSERT OR IGNORE INTO epubs (sha256, filename) VALUES (?, ?)",
+		sha256sum, filename,
+	)
+	if err != nil {
+		return fmt.Errorf("record epub: %w", err)
+	}
+	return nil
+}
+
+// checksumFile returns the hex-encoded SHA-256 of the file at path.
+func checksumFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open for checksum: %w", err)
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", fmt.Errorf("hash file: %w", err)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // MarkSeen records articles in the store. Duplicates are silently ignored.

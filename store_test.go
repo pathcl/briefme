@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -15,6 +16,8 @@ func openTestStore(t *testing.T) *Store {
 	t.Cleanup(func() { s.Close() })
 	return s
 }
+
+// --- article deduplication ---
 
 func TestStore_FilterNew_AllNew(t *testing.T) {
 	s := openTestStore(t)
@@ -33,9 +36,7 @@ func TestStore_FilterNew_AllNew(t *testing.T) {
 
 func TestStore_FilterNew_AllSeen(t *testing.T) {
 	s := openTestStore(t)
-	articles := []Article{
-		{Title: "A", URL: "https://example.com/1"},
-	}
+	articles := []Article{{Title: "A", URL: "https://example.com/1"}}
 	if err := s.MarkSeen(articles); err != nil {
 		t.Fatalf("MarkSeen: %v", err)
 	}
@@ -50,11 +51,9 @@ func TestStore_FilterNew_AllSeen(t *testing.T) {
 
 func TestStore_FilterNew_Mixed(t *testing.T) {
 	s := openTestStore(t)
-	seen := []Article{{Title: "Old", URL: "https://example.com/old"}}
-	if err := s.MarkSeen(seen); err != nil {
+	if err := s.MarkSeen([]Article{{Title: "Old", URL: "https://example.com/old"}}); err != nil {
 		t.Fatalf("MarkSeen: %v", err)
 	}
-
 	all := []Article{
 		{Title: "Old",  URL: "https://example.com/old"},
 		{Title: "New1", URL: "https://example.com/new1"},
@@ -77,7 +76,6 @@ func TestStore_FilterNew_Mixed(t *testing.T) {
 func TestStore_MarkSeen_Idempotent(t *testing.T) {
 	s := openTestStore(t)
 	articles := []Article{{Title: "A", URL: "https://example.com/1"}}
-
 	if err := s.MarkSeen(articles); err != nil {
 		t.Fatalf("first MarkSeen: %v", err)
 	}
@@ -95,13 +93,93 @@ func TestStore_RecordsMetadata(t *testing.T) {
 	if err := s.MarkSeen(articles); err != nil {
 		t.Fatalf("MarkSeen: %v", err)
 	}
-
-	// Article should now be filtered out
 	got, err := s.FilterNew(articles)
 	if err != nil {
 		t.Fatalf("FilterNew: %v", err)
 	}
 	if len(got) != 0 {
 		t.Errorf("expected article to be marked as seen")
+	}
+}
+
+// --- EPUB checksum deduplication ---
+
+func TestStore_EPUBSeen_NewChecksum(t *testing.T) {
+	s := openTestStore(t)
+	seen, err := s.EPUBSeen("abc123")
+	if err != nil {
+		t.Fatalf("EPUBSeen: %v", err)
+	}
+	if seen {
+		t.Error("unknown checksum should not be seen")
+	}
+}
+
+func TestStore_EPUBSeen_KnownChecksum(t *testing.T) {
+	s := openTestStore(t)
+	if err := s.RecordEPUB("abc123", "briefme-2026-05-28.epub"); err != nil {
+		t.Fatalf("RecordEPUB: %v", err)
+	}
+	seen, err := s.EPUBSeen("abc123")
+	if err != nil {
+		t.Fatalf("EPUBSeen: %v", err)
+	}
+	if !seen {
+		t.Error("checksum should be seen after RecordEPUB")
+	}
+}
+
+func TestStore_RecordEPUB_Idempotent(t *testing.T) {
+	s := openTestStore(t)
+	if err := s.RecordEPUB("abc123", "briefme.epub"); err != nil {
+		t.Fatalf("first RecordEPUB: %v", err)
+	}
+	if err := s.RecordEPUB("abc123", "briefme.epub"); err != nil {
+		t.Fatalf("second RecordEPUB should not error: %v", err)
+	}
+}
+
+func TestChecksumFile_Deterministic(t *testing.T) {
+	f, err := os.CreateTemp("", "briefme-chk-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	f.WriteString("hello briefme")
+	f.Close()
+
+	sum1, err := checksumFile(f.Name())
+	if err != nil {
+		t.Fatalf("checksumFile: %v", err)
+	}
+	sum2, err := checksumFile(f.Name())
+	if err != nil {
+		t.Fatalf("checksumFile second call: %v", err)
+	}
+	if sum1 != sum2 {
+		t.Error("checksum is not deterministic")
+	}
+	if len(sum1) != 64 {
+		t.Errorf("expected 64-char hex SHA-256, got %d chars", len(sum1))
+	}
+}
+
+func TestChecksumFile_DifferentContents(t *testing.T) {
+	write := func(content string) string {
+		f, err := os.CreateTemp("", "briefme-chk-*")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(f.Name())
+		f.WriteString(content)
+		f.Close()
+		sum, err := checksumFile(f.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sum
+	}
+	if write("aaa") == write("bbb") {
+		t.Error("different files produced the same checksum")
 	}
 }
