@@ -1,14 +1,14 @@
 # briefme
 
-A Go CLI that fetches articles from RSS feeds, packages them as an EPUB, and delivers the result to your Kobo e-reader via email.
+A Go CLI that fetches articles from RSS feeds, packages them as an EPUB, and copies the result to your Kobo e-reader over USB.
 
 ## How it works
 
 ```
-RSS feeds → fetch articles → build EPUB → email to Kobo
+RSS feeds → fetch articles → build EPUB → copy to Kobo (USB)
 ```
 
-Kobo's "Send to Kobo" feature accepts EPUBs sent to your device's linked email address (via Dropbox). `briefme` automates the whole pipeline so your reading list is waiting on the device when you pick it up.
+When your Kobo is connected via USB it mounts as a regular drive. `briefme` writes a dated EPUB directly to it. Disconnect the Kobo and the file is in your library.
 
 ## Installation
 
@@ -39,50 +39,56 @@ feeds:
   - url: "https://example.com/feed.xml"
     name: "My Blog"
 
-kobo_email: "your-kobo-email@kobo.com"   # the email linked to your Kobo
+# Mount path of your Kobo when connected via USB.
+# Leave empty to let briefme auto-detect it.
+kobo_path: ""
 
-smtp:
-  host: "smtp.gmail.com"
-  port: 587
-  username: "you@gmail.com"
-  password: "your-app-password"           # use an app password, not your main password
-  from: "you@gmail.com"
-
-max_articles: 20                          # cap on total articles per run (default: 20)
+max_articles: 20    # cap on total articles per run (default: 20)
 ```
 
-### Finding your Kobo email address
+### Finding the Kobo mount path
 
-1. On your Kobo device: **Settings → My Kobo → Kobo and Dropbox**
-2. Or in the Kobo app: **Settings → Kobo**
-3. The address looks like `<name>@kobo.com`
+Connect the Kobo via USB and look for it at:
 
-### Gmail setup
+| OS | Typical path |
+|---|---|
+| macOS | `/Volumes/KOBOeReader` |
+| Linux | `/media/<username>/KOBOeReader` or `/run/media/<username>/KOBOeReader` |
+| Windows | `E:\` (or whichever drive letter Windows assigns) |
 
-Gmail requires an [App Password](https://support.google.com/accounts/answer/185833) rather than your main password. Generate one under **Google Account → Security → App passwords**.
+If you leave `kobo_path` empty, `briefme` will check the common locations above automatically.
 
 ## Usage
 
 ```bash
-# Build the EPUB and send it to your Kobo
+# Plug in your Kobo, then run:
 briefme --config config.yaml
 
-# Build the EPUB locally without sending (useful for testing)
+# Build the EPUB locally without copying to the Kobo:
 briefme --config config.yaml --dry-run
 
 # Default config path is ./config.yaml
 briefme
 ```
 
-The `--dry-run` flag writes a `briefme-YYYY-MM-DD.epub` file in the current directory so you can inspect it in any EPUB reader before committing to sending.
+The `--dry-run` flag writes `briefme-YYYY-MM-DD.epub` in the current directory so you can open it in any EPUB reader before committing.
 
-## Running on a schedule
+## Automating the workflow
 
-Use cron to get a daily delivery:
+Because the Kobo needs to be physically connected, automation is most useful as a script you run before a commute or before going offline:
 
-```cron
-# Every morning at 7am
-0 7 * * * /usr/local/bin/briefme --config /home/user/briefme/config.yaml >> /var/log/briefme.log 2>&1
+```bash
+#!/bin/bash
+# sync-kobo.sh — run once when you plug in the Kobo
+briefme --config ~/briefme/config.yaml && echo "Kobo ready — safe to eject"
+```
+
+On Linux you can trigger it automatically on USB mount with a udev rule:
+
+```
+# /etc/udev/rules.d/99-kobo-sync.rules
+ACTION=="add", SUBSYSTEM=="block", ENV{ID_FS_LABEL}=="KOBOeReader", \
+  RUN+="/usr/local/bin/briefme --config /home/<username>/briefme/config.yaml"
 ```
 
 ## Project layout
@@ -93,7 +99,7 @@ briefme/
 ├── config.go             # config loading and validation
 ├── fetcher.go            # RSS/Atom feed fetching and deduplication
 ├── builder.go            # EPUB assembly
-├── mailer.go             # SMTP email with EPUB attachment
+├── delivery.go           # copy EPUB to Kobo mount path (with auto-detection)
 ├── config.yaml.example   # example configuration
 ├── *_test.go             # tests for each component
 ├── go.mod
@@ -106,7 +112,6 @@ briefme/
 |---|---|
 | [`github.com/mmcdole/gofeed`](https://github.com/mmcdole/gofeed) | RSS/Atom feed parsing |
 | [`github.com/bmaupin/go-epub`](https://github.com/bmaupin/go-epub) | EPUB generation |
-| [`gopkg.in/gomail.v2`](https://pkg.go.dev/gopkg.in/gomail.v2) | Email with MIME attachments |
 | [`gopkg.in/yaml.v3`](https://pkg.go.dev/gopkg.in/yaml.v3) | YAML config parsing |
 
 ## Running tests
