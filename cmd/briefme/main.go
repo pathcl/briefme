@@ -14,12 +14,50 @@ import (
 	"github.com/pathcl/briefme/internal/epub"
 	"github.com/pathcl/briefme/internal/feed"
 	"github.com/pathcl/briefme/internal/store"
+	"github.com/pathcl/briefme/internal/web"
 )
 
 func main() {
-	configPath := flag.String("config", "config.yaml", "path to config file")
-	dryRun := flag.Bool("dry-run", false, "build EPUBs locally but skip copying to Kobo")
-	flag.Parse()
+	if len(os.Args) > 1 && os.Args[1] == "serve" {
+		runServe(os.Args[2:])
+		return
+	}
+	runFetch(os.Args[1:])
+}
+
+// ingest fetches new articles from all feeds and stores them.
+// It does not build EPUBs or deliver to Kobo.
+func ingest(cfg *config.Config, db *store.Store) {
+	log.Printf("fetching from %d feed(s), max %d per feed", len(cfg.Feeds), cfg.MaxPerFeed)
+	candidates, err := feed.FetchArticles(cfg.Feeds, cfg.MaxPerFeed)
+	if err != nil {
+		log.Printf("fetch: %v", err)
+		return
+	}
+
+	newArticles, err := db.FilterNew(candidates)
+	if err != nil {
+		log.Printf("filter: %v", err)
+		return
+	}
+	log.Printf("%d new articles to fetch", len(newArticles))
+
+	if len(newArticles) == 0 {
+		return
+	}
+	newArticles = feed.EnrichArticles(newArticles)
+	if len(newArticles) > 0 {
+		if err := db.MarkSeen(newArticles); err != nil {
+			log.Printf("store articles: %v", err)
+		}
+	}
+}
+
+func runFetch(args []string) {
+	fs := flag.NewFlagSet("briefme", flag.ExitOnError)
+	configPath := fs.String("config", "config.yaml", "path to config file")
+	dryRun := fs.Bool("dry-run", false, "build EPUBs locally but skip copying to Kobo")
+	fs.Parse(args)
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
@@ -32,35 +70,12 @@ func main() {
 	}
 	defer db.Close()
 
-	// ── Step 1: ingest new articles into the DB ───────────────────────────────
+	// Step 1: ingest new articles
+	ingest(cfg, db)
 
-	log.Printf("fetching from %d feed(s), max %d per feed", len(cfg.Feeds), cfg.MaxPerFeed)
-	candidates, err := feed.FetchArticles(cfg.Feeds, cfg.MaxPerFeed)
-	if err != nil {
-		log.Fatalf("fetch: %v", err)
-	}
-
-	newArticles, err := db.FilterNew(candidates)
-	if err != nil {
-		log.Fatalf("filter: %v", err)
-	}
-	log.Printf("%d new articles to fetch", len(newArticles))
-
-	if len(newArticles) > 0 {
-		newArticles = feed.EnrichArticles(newArticles)
-		if len(newArticles) > 0 {
-			if err := db.MarkSeen(newArticles); err != nil {
-				log.Fatalf("store articles: %v", err)
-			}
-		}
-	}
-
-	// ── Step 2: build one EPUB per category from all of today's articles ──────
-
+	// Step 2: build one EPUB per category from all of today's articles
 	date := time.Now().Format("2006-01-02")
-	categories := uniqueCategories(cfg.Feeds)
-
-	for _, category := range categories {
+	for _, category := range uniqueCategories(cfg.Feeds) {
 		todayArticles, err := db.GetArticlesByDate(category, date)
 		if err != nil {
 			log.Printf("[%s] query failed: %v — skipping", category, err)
@@ -114,6 +129,30 @@ func main() {
 
 	if !*dryRun {
 		log.Println("done")
+	}
+}
+
+func runServe(args []string) {
+	fs := flag.NewFlagSet("serve", flag.ExitOnError)
+	configPath := fs.String("config", "config.yaml", "path to config file")
+	port := fs.String("port", "8080", "HTTP listen port")
+	bind := fs.String("bind", "127.0.0.1", "HTTP bind address")
+	fs.Parse(args)
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+
+	db, err := store.Open(cfg.DBPath)
+	if err != nil {
+		log.Fatalf("store: %v", err)
+	}
+	defer db.Close()
+
+	srv := web.New(db, cfg, *bind, *port, ingest)
+	if err := srv.Start(); err != nil {
+		log.Fatalf("server: %v", err)
 	}
 }
 

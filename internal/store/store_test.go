@@ -196,6 +196,174 @@ func TestGetArticlesByDate_EmptyForWrongDate(t *testing.T) {
 	}
 }
 
+// --- calendar: dates in month ---
+
+func TestGetDatesInMonth_ReturnsMatchingDates(t *testing.T) {
+	s := openTestStore(t)
+	articles := []model.Article{
+		{Title: "A", URL: "https://example.com/1", Category: "news"},
+		{Title: "B", URL: "https://example.com/2", Category: "papers"},
+	}
+	if err := s.MarkSeen(articles); err != nil {
+		t.Fatalf("MarkSeen: %v", err)
+	}
+	month := time.Now().Format("2006-01")
+	got, err := s.GetDatesInMonth(month)
+	if err != nil {
+		t.Fatalf("GetDatesInMonth: %v", err)
+	}
+	today := time.Now().Format("2006-01-02")
+	if !got[today] {
+		t.Errorf("expected today %q to be in result", today)
+	}
+}
+
+func TestGetDatesInMonth_EmptyForOtherMonth(t *testing.T) {
+	s := openTestStore(t)
+	articles := []model.Article{
+		{Title: "A", URL: "https://example.com/1", Category: "news"},
+	}
+	if err := s.MarkSeen(articles); err != nil {
+		t.Fatalf("MarkSeen: %v", err)
+	}
+	got, err := s.GetDatesInMonth("1970-01")
+	if err != nil {
+		t.Fatalf("GetDatesInMonth: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected empty map for 1970-01, got %v", got)
+	}
+}
+
+// --- tagging ---
+
+func TestAddTag_AndRetrieve(t *testing.T) {
+	s := openTestStore(t)
+	arts := []model.Article{{Title: "A", URL: "https://example.com/1", Category: "news"}}
+	if err := s.MarkSeen(arts); err != nil {
+		t.Fatalf("MarkSeen: %v", err)
+	}
+	if err := s.AddTag("https://example.com/1", "golang"); err != nil {
+		t.Fatalf("AddTag: %v", err)
+	}
+	tags, err := s.GetTagsForArticle("https://example.com/1")
+	if err != nil {
+		t.Fatalf("GetTagsForArticle: %v", err)
+	}
+	if len(tags) != 1 || tags[0] != "golang" {
+		t.Errorf("expected [golang], got %v", tags)
+	}
+}
+
+func TestAddTag_Idempotent(t *testing.T) {
+	s := openTestStore(t)
+	arts := []model.Article{{Title: "A", URL: "https://example.com/1", Category: "news"}}
+	s.MarkSeen(arts)
+	s.AddTag("https://example.com/1", "golang")
+	if err := s.AddTag("https://example.com/1", "golang"); err != nil {
+		t.Fatalf("duplicate AddTag should not error: %v", err)
+	}
+	tags, _ := s.GetTagsForArticle("https://example.com/1")
+	if len(tags) != 1 {
+		t.Errorf("expected 1 tag, got %d", len(tags))
+	}
+}
+
+func TestRemoveTag(t *testing.T) {
+	s := openTestStore(t)
+	arts := []model.Article{{Title: "A", URL: "https://example.com/1", Category: "news"}}
+	s.MarkSeen(arts)
+	s.AddTag("https://example.com/1", "golang")
+	s.AddTag("https://example.com/1", "ai")
+	if err := s.RemoveTag("https://example.com/1", "golang"); err != nil {
+		t.Fatalf("RemoveTag: %v", err)
+	}
+	tags, _ := s.GetTagsForArticle("https://example.com/1")
+	if len(tags) != 1 || tags[0] != "ai" {
+		t.Errorf("expected [ai] after removal, got %v", tags)
+	}
+}
+
+func TestGetArticlesByTag(t *testing.T) {
+	s := openTestStore(t)
+	arts := []model.Article{
+		{Title: "Go post",  URL: "https://example.com/1", Category: "news", Content: "<p>x</p>"},
+		{Title: "AI paper", URL: "https://example.com/2", Category: "papers", Content: "<p>y</p>"},
+		{Title: "Other",    URL: "https://example.com/3", Category: "news", Content: "<p>z</p>"},
+	}
+	s.MarkSeen(arts)
+	s.AddTag("https://example.com/1", "golang")
+	s.AddTag("https://example.com/2", "golang")
+
+	got, err := s.GetArticlesByTag("golang")
+	if err != nil {
+		t.Fatalf("GetArticlesByTag: %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("expected 2 articles, got %d", len(got))
+	}
+}
+
+func TestGetAllTags(t *testing.T) {
+	s := openTestStore(t)
+	arts := []model.Article{
+		{Title: "A", URL: "https://example.com/1", Category: "news"},
+		{Title: "B", URL: "https://example.com/2", Category: "news"},
+	}
+	s.MarkSeen(arts)
+	s.AddTag("https://example.com/1", "golang")
+	s.AddTag("https://example.com/1", "ai")
+	s.AddTag("https://example.com/2", "golang")
+
+	tags, err := s.GetAllTags()
+	if err != nil {
+		t.Fatalf("GetAllTags: %v", err)
+	}
+	if len(tags) != 2 {
+		t.Fatalf("expected 2 tags, got %d", len(tags))
+	}
+	if tags[0].Tag != "golang" || tags[0].Count != 2 {
+		t.Errorf("expected golang×2 first, got %+v", tags[0])
+	}
+}
+
+// --- date listing ---
+
+func TestGetDates_ReturnsDistinctDatesNewestFirst(t *testing.T) {
+	s := openTestStore(t)
+
+	articles := []model.Article{
+		{Title: "A", URL: "https://example.com/1", Category: "news"},
+		{Title: "B", URL: "https://example.com/2", Category: "papers"},
+	}
+	if err := s.MarkSeen(articles); err != nil {
+		t.Fatalf("MarkSeen: %v", err)
+	}
+
+	dates, err := s.GetDates()
+	if err != nil {
+		t.Fatalf("GetDates: %v", err)
+	}
+	if len(dates) != 1 {
+		t.Fatalf("expected 1 date, got %d: %v", len(dates), dates)
+	}
+	today := time.Now().Format("2006-01-02")
+	if dates[0] != today {
+		t.Errorf("expected %q, got %q", today, dates[0])
+	}
+}
+
+func TestGetDates_EmptyWhenNoArticles(t *testing.T) {
+	s := openTestStore(t)
+	dates, err := s.GetDates()
+	if err != nil {
+		t.Fatalf("GetDates: %v", err)
+	}
+	if len(dates) != 0 {
+		t.Errorf("expected 0 dates, got %d", len(dates))
+	}
+}
+
 // --- EPUB checksum ---
 
 func TestLookupEPUB_NotFound(t *testing.T) {

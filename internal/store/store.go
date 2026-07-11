@@ -31,8 +31,13 @@ func Open(path string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
+// TagCount is returned by GetAllTags.
+type TagCount struct {
+	Tag   string
+	Count int
+}
+
 func migrate(db *sql.DB) error {
-	// Create tables if they don't exist.
 	_, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS articles (
 			url         TEXT PRIMARY KEY,
@@ -47,18 +52,22 @@ func migrate(db *sql.DB) error {
 			sha256      TEXT PRIMARY KEY,
 			filename    TEXT NOT NULL,
 			produced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS tags (
+			url        TEXT NOT NULL,
+			tag        TEXT NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (url, tag)
 		)`)
 	if err != nil {
 		return fmt.Errorf("create schema: %w", err)
 	}
 
-	// Add columns that may be missing in existing databases.
-	// SQLite returns an error if the column already exists; we ignore it.
-	for _, col := range []string{
+	for _, stmt := range []string{
 		"ALTER TABLE articles ADD COLUMN category TEXT NOT NULL DEFAULT 'news'",
 		"ALTER TABLE articles ADD COLUMN content  TEXT NOT NULL DEFAULT ''",
 	} {
-		db.Exec(col) // intentionally ignore error
+		db.Exec(stmt) // intentionally ignore error (column already exists)
 	}
 
 	return nil
@@ -142,6 +151,144 @@ func (s *Store) GetArticlesByDate(category, date string) ([]model.Article, error
 		articles = append(articles, a)
 	}
 	return articles, rows.Err()
+}
+
+// GetDates returns all distinct dates (YYYY-MM-DD) that have articles, newest first.
+func (s *Store) GetDates() ([]string, error) {
+	rows, err := s.db.Query(`
+		SELECT DISTINCT DATE(recorded_at, 'localtime')
+		FROM articles
+		ORDER BY recorded_at DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("query dates: %w", err)
+	}
+	defer rows.Close()
+
+	var dates []string
+	for rows.Next() {
+		var d string
+		if err := rows.Scan(&d); err != nil {
+			return nil, fmt.Errorf("scan date: %w", err)
+		}
+		dates = append(dates, d)
+	}
+	return dates, rows.Err()
+}
+
+// GetDatesInMonth returns the set of dates (YYYY-MM-DD) in the given month
+// (formatted as YYYY-MM) that have at least one article.
+func (s *Store) GetDatesInMonth(yearMonth string) (map[string]bool, error) {
+	rows, err := s.db.Query(`
+		SELECT DISTINCT DATE(recorded_at, 'localtime')
+		FROM articles
+		WHERE strftime('%Y-%m', recorded_at, 'localtime') = ?`,
+		yearMonth)
+	if err != nil {
+		return nil, fmt.Errorf("query dates in month: %w", err)
+	}
+	defer rows.Close()
+
+	out := make(map[string]bool)
+	for rows.Next() {
+		var d string
+		if err := rows.Scan(&d); err != nil {
+			return nil, fmt.Errorf("scan date: %w", err)
+		}
+		out[d] = true
+	}
+	return out, rows.Err()
+}
+
+// AddTag attaches a tag to an article URL. Duplicate tags are silently ignored.
+func (s *Store) AddTag(url, tag string) error {
+	_, err := s.db.Exec(
+		"INSERT OR IGNORE INTO tags (url, tag) VALUES (?, ?)", url, tag)
+	if err != nil {
+		return fmt.Errorf("add tag: %w", err)
+	}
+	return nil
+}
+
+// RemoveTag detaches a tag from an article URL.
+func (s *Store) RemoveTag(url, tag string) error {
+	_, err := s.db.Exec("DELETE FROM tags WHERE url = ? AND tag = ?", url, tag)
+	if err != nil {
+		return fmt.Errorf("remove tag: %w", err)
+	}
+	return nil
+}
+
+// GetTagsForArticle returns all tags for a given article URL, sorted alphabetically.
+func (s *Store) GetTagsForArticle(url string) ([]string, error) {
+	rows, err := s.db.Query(
+		"SELECT tag FROM tags WHERE url = ? ORDER BY tag ASC", url)
+	if err != nil {
+		return nil, fmt.Errorf("get tags: %w", err)
+	}
+	defer rows.Close()
+
+	var tags []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, fmt.Errorf("scan tag: %w", err)
+		}
+		tags = append(tags, t)
+	}
+	return tags, rows.Err()
+}
+
+// GetArticlesByTag returns all articles that carry the given tag, newest first.
+func (s *Store) GetArticlesByTag(tag string) ([]model.Article, error) {
+	rows, err := s.db.Query(`
+		SELECT a.url, a.title, a.feed, a.category, a.content, a.published
+		FROM articles a
+		JOIN tags t ON a.url = t.url
+		WHERE t.tag = ?
+		ORDER BY a.recorded_at DESC`, tag)
+	if err != nil {
+		return nil, fmt.Errorf("get articles by tag: %w", err)
+	}
+	defer rows.Close()
+
+	var articles []model.Article
+	for rows.Next() {
+		var a model.Article
+		var pub sql.NullString
+		if err := rows.Scan(&a.URL, &a.Title, &a.FeedName, &a.Category, &a.Content, &pub); err != nil {
+			return nil, fmt.Errorf("scan article: %w", err)
+		}
+		if pub.Valid && pub.String != "" {
+			if t, err := time.Parse(time.RFC3339, pub.String); err == nil {
+				a.PublishedAt = t
+			}
+		}
+		articles = append(articles, a)
+	}
+	return articles, rows.Err()
+}
+
+// GetAllTags returns all tags with their article counts, sorted by count descending.
+func (s *Store) GetAllTags() ([]TagCount, error) {
+	rows, err := s.db.Query(`
+		SELECT tag, COUNT(*) as n
+		FROM tags
+		GROUP BY tag
+		ORDER BY n DESC, tag ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("get all tags: %w", err)
+	}
+	defer rows.Close()
+
+	var out []TagCount
+	for rows.Next() {
+		var tc TagCount
+		if err := rows.Scan(&tc.Tag, &tc.Count); err != nil {
+			return nil, fmt.Errorf("scan tag count: %w", err)
+		}
+		out = append(out, tc)
+	}
+	return out, rows.Err()
 }
 
 // LookupEPUB checks whether an EPUB with this SHA-256 was previously produced.
