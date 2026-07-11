@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"time"
 
@@ -28,7 +29,14 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 
-	return &Store{db: db}, nil
+	s := &Store{db: db}
+	if n, err := s.PurgeInvalidArticles(); err != nil {
+		db.Close()
+		return nil, err
+	} else if n > 0 {
+		log.Printf("store: purged %d invalid article(s) (binary/PDF content)", n)
+	}
+	return s, nil
 }
 
 // TagCount is returned by GetAllTags.
@@ -75,6 +83,23 @@ func migrate(db *sql.DB) error {
 
 func (s *Store) Close() error {
 	return s.db.Close()
+}
+
+// PurgeInvalidArticles removes articles whose stored content is binary (e.g. a
+// PDF fetched by mistake). Detection: content starts with the PDF magic bytes
+// "%PDF", or the URL ends with ".pdf" (case-insensitive).
+// Returns the number of rows deleted.
+func (s *Store) PurgeInvalidArticles() (int, error) {
+	res, err := s.db.Exec(`
+		DELETE FROM articles
+		WHERE content LIKE '%PDF-%'
+		   OR LOWER(url) LIKE '%.pdf'
+		   OR LOWER(url) LIKE '%.pdf?%'`)
+	if err != nil {
+		return 0, fmt.Errorf("purge invalid articles: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }
 
 // FilterNew returns only articles whose URL is not already in the store.

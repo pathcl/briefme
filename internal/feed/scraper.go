@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	readability "github.com/go-shiori/go-readability"
@@ -50,6 +51,11 @@ func fetchReadable(u string) (string, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("fetch %q: HTTP %d", u, resp.StatusCode)
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "text/html") && !strings.Contains(ct, "application/xhtml") {
+		return "", fmt.Errorf("skip %q: non-HTML content-type %q", u, ct)
 	}
 
 	article, err := readability.FromReader(resp.Body, parsedURL)

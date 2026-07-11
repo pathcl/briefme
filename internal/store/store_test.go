@@ -441,6 +441,46 @@ func TestChecksumFile_Deterministic(t *testing.T) {
 	}
 }
 
+// --- purge invalid articles ---
+
+func TestPurgeInvalidArticles_RemovesPDFContent(t *testing.T) {
+	s := openTestStore(t)
+	arts := []model.Article{
+		{Title: "Good", URL: "https://example.com/article", Category: "news", Content: "<p>hello</p>"},
+		{Title: "PDF binary", URL: "https://example.com/paper.pdf", Category: "news", Content: "%PDF-1.7 binary garbage"},
+		{Title: "PDF url", URL: "https://cdn.example.com/doc.pdf", Category: "papers", Content: "%PDF-1.4 more garbage"},
+	}
+	if err := s.MarkSeen(arts); err != nil {
+		t.Fatalf("MarkSeen: %v", err)
+	}
+	n, err := s.PurgeInvalidArticles()
+	if err != nil {
+		t.Fatalf("PurgeInvalidArticles: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("expected 2 purged, got %d", n)
+	}
+	remaining, _ := s.FilterNew([]model.Article{{URL: "https://example.com/article"}})
+	if len(remaining) != 0 {
+		t.Error("good article should still be in DB")
+	}
+}
+
+func TestPurgeInvalidArticles_IdempotentOnCleanDB(t *testing.T) {
+	s := openTestStore(t)
+	arts := []model.Article{
+		{Title: "Good", URL: "https://example.com/1", Category: "news", Content: "<p>fine</p>"},
+	}
+	s.MarkSeen(arts)
+	n, err := s.PurgeInvalidArticles()
+	if err != nil {
+		t.Fatalf("PurgeInvalidArticles: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("expected 0 purged on clean DB, got %d", n)
+	}
+}
+
 func TestChecksumFile_DifferentContents(t *testing.T) {
 	write := func(content string) string {
 		f, _ := os.CreateTemp("", "briefme-chk-*")
