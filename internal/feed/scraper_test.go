@@ -72,6 +72,7 @@ func TestFetchContent_ExcludesSidebarAndFooter(t *testing.T) {
 	}
 }
 
+
 func TestFetchContent_BadURL(t *testing.T) {
 	_, err := feed.FetchContent("http://127.0.0.1:0/nonexistent")
 	if err == nil {

@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/pathcl/briefme/internal/config"
 	"github.com/pathcl/briefme/internal/model"
 	"github.com/pathcl/briefme/internal/store"
@@ -115,9 +117,35 @@ func stripSVG(html string) string {
 	return svgRe.ReplaceAllString(html, "")
 }
 
+// lazyMedia neutralises external media so the browser does not fetch anything
+// on page load. src/srcset are moved to data-src/data-srcset and a
+// "lazy-media" class is added so the JS toggle can reveal them on demand.
+func lazyMedia(rawHTML string) string {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(rawHTML))
+	if err != nil {
+		return rawHTML
+	}
+	doc.Find("img, video, audio, source, iframe").Each(func(_ int, s *goquery.Selection) {
+		if v, ok := s.Attr("src"); ok {
+			s.SetAttr("data-src", v)
+			s.RemoveAttr("src")
+		}
+		if v, ok := s.Attr("srcset"); ok {
+			s.SetAttr("data-srcset", v)
+			s.RemoveAttr("srcset")
+		}
+		s.AddClass("lazy-media")
+	})
+	out, err := doc.Find("body").Html()
+	if err != nil {
+		return rawHTML
+	}
+	return out
+}
+
 func (srv *Server) articleToWeb(a model.Article) webArticle {
 	tags, _ := srv.store.GetTagsForArticle(a.URL)
-	content := stripSVG(a.Content)
+	content := lazyMedia(stripSVG(a.Content))
 	suggested := SuggestTags(content, 8)
 
 	// Remove already-applied tags from suggestions.

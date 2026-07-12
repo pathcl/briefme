@@ -34,4 +34,4 @@ kobo_path: ""
 
 max_per_feed: 200   # articles fetched per feed; total = feeds × max_per_feed
 
-db_path: "/data/briefme.db"   # sqlite database on the Fly.io persistent volume
+db_path: "./data/briefme.db"   # sqlite database on the Fly.io persistent volume
