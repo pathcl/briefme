@@ -136,7 +136,7 @@ func runServe(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	configPath := fs.String("config", "config.yaml", "path to config file")
 	port := fs.String("port", "8080", "HTTP listen port")
-	bind := fs.String("bind", "127.0.0.1", "HTTP bind address")
+	bind := fs.String("bind", "0.0.0.0", "HTTP bind address")
 	fs.Parse(args)
 
 	cfg, err := config.Load(*configPath)

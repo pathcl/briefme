@@ -1,2 +1,5 @@
 CLAUDE.md
 /briefme
+cmd/briefme/briefme
+*.db
+*.epub

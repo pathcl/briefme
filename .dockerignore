@@ -1,0 +1,4 @@
+# flyctl launch added from .gitignore
+**/CLAUDE.md
+briefme
+fly.toml

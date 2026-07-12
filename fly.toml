@@ -1,0 +1,31 @@
+# fly.toml app configuration file generated for briefme on 2026-07-11T14:55:24Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'briefme'
+primary_region = 'ams'
+
+[build]
+  [build.args]
+    GO_VERSION = '1.26.3'
+
+[env]
+  PORT = '8080'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['app']
+
+[[mounts]]
+  source = "briefme_data"
+  destination = "/data"
+
+[[vm]]
+  memory = '256mb'
+  cpus = 1
+  memory_mb = 256
