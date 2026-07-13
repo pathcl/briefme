@@ -35,3 +35,8 @@ kobo_path: ""
 max_per_feed: 5   # articles fetched per feed; total = feeds × max_per_feed
 
 db_path: "briefme.db"   # sqlite database tracking seen articles (created automatically)
+
+# Secret phrase to enable the on-demand refresh button in the web UI.
+# Can also be set via the BRIEFME_REFRESH_KEY environment variable (recommended).
+# Leave empty to disable the refresh button.
+refresh_key: ""

@@ -3,3 +3,4 @@ CLAUDE.md
 cmd/briefme/briefme
 *.db
 *.epub
+config.yaml

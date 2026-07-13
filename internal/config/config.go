@@ -7,6 +7,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const refreshKeyEnv = "BRIEFME_REFRESH_KEY"
+
 type FeedConfig struct {
 	URL      string `yaml:"url"`
 	Name     string `yaml:"name"`
@@ -18,6 +20,7 @@ type Config struct {
 	KoboPath   string       `yaml:"kobo_path"`
 	MaxPerFeed int          `yaml:"max_per_feed"`
 	DBPath     string       `yaml:"db_path"`
+	RefreshKey string       `yaml:"refresh_key"`
 }
 
 func Load(path string) (*Config, error) {
@@ -44,6 +47,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.DBPath == "" {
 		cfg.DBPath = "briefme.db"
+	}
+	if cfg.RefreshKey == "" {
+		cfg.RefreshKey = os.Getenv(refreshKeyEnv)
 	}
 
 	return &cfg, nil

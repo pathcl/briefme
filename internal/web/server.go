@@ -37,12 +37,18 @@ type Server struct {
 	ingest IngestFunc
 }
 
+const pageSize = 20
+
 // pageData is passed to layout.html.
 type pageData struct {
 	Date     string
 	Today    string
 	Calendar calendarData
 	Sections []categorySection
+	Page     int
+	PrevPage int
+	NextPage int
+	Total    int
 }
 
 // tagsPageData is passed to tags.html.
@@ -83,6 +89,7 @@ func (srv *Server) handler() http.Handler {
 	mux.HandleFunc("GET /tags", srv.handleTagIndex)
 	mux.HandleFunc("POST /tag", srv.handleAddTag)
 	mux.HandleFunc("POST /untag", srv.handleRemoveTag)
+	mux.HandleFunc("POST /refresh", srv.handleRefresh)
 	mux.HandleFunc("/", srv.handle)
 	return mux
 }

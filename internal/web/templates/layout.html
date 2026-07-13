@@ -56,6 +56,13 @@
   <div class="d-flex gap-3 align-items-center" style="font-family:var(--bs-font-sans-serif);font-size:0.85rem;">
     <a href="/tags" class="text-muted text-decoration-none">tags</a>
     <button id="media-toggle" class="btn btn-sm btn-outline-secondary" style="font-size:0.78rem;">show media</button>
+    <span id="refresh-trigger" class="text-muted text-decoration-none" style="cursor:pointer;font-size:0.85rem;" onclick="document.getElementById('refresh-form').style.display='flex'">↻ refresh</span>
+    <form id="refresh-form" method="POST" action="/refresh" class="d-none align-items-center gap-1" style="display:none!important">
+      <input type="hidden" name="ref" value="/{{.Date}}">
+      <input type="password" name="key" class="form-control form-control-sm" style="width:130px;font-size:0.78rem;" placeholder="key…" autofocus>
+      <button type="submit" class="btn btn-sm btn-outline-secondary" style="font-size:0.78rem;">go</button>
+      <button type="button" class="btn btn-sm btn-link text-muted p-0" style="font-size:0.78rem;" onclick="document.getElementById('refresh-form').style.display='none'">✕</button>
+    </form>
     <span class="text-muted">{{.Date}}</span>
   </div>
 </nav>
@@ -178,6 +185,18 @@
         {{end}}
       {{else}}
         <p class="text-muted fst-italic">No articles for {{.Date}}.</p>
+      {{end}}
+
+      {{if or .PrevPage .NextPage}}
+      <nav class="d-flex justify-content-between align-items-center mt-2 mb-4" style="font-family:var(--bs-font-sans-serif);font-size:0.85rem;">
+        <div>
+          {{if .PrevPage}}<a href="/{{.Date}}?page={{.PrevPage}}" class="btn btn-outline-secondary btn-sm">&larr; newer</a>{{end}}
+        </div>
+        <span class="text-muted">{{.Total}} articles &middot; page {{.Page}}</span>
+        <div>
+          {{if .NextPage}}<a href="/{{.Date}}?page={{.NextPage}}" class="btn btn-outline-secondary btn-sm">older &rarr;</a>{{end}}
+        </div>
+      </nav>
       {{end}}
     </div>
 

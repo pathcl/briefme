@@ -178,6 +178,45 @@ func (s *Store) GetArticlesByDate(category, date string) ([]model.Article, error
 	return articles, rows.Err()
 }
 
+// GetArticlesByDatePaged returns a page of articles for the given date across all
+// categories, ordered by category then recorded_at. It also returns the total
+// article count for that date so callers can compute page count.
+func (s *Store) GetArticlesByDatePaged(date string, limit, offset int) ([]model.Article, int, error) {
+	var total int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM articles WHERE DATE(recorded_at,'localtime') = ?`, date,
+	).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count articles: %w", err)
+	}
+
+	rows, err := s.db.Query(`
+		SELECT url, title, feed, category, content, published
+		FROM articles
+		WHERE DATE(recorded_at, 'localtime') = ?
+		ORDER BY category ASC, recorded_at ASC
+		LIMIT ? OFFSET ?`, date, limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query articles paged: %w", err)
+	}
+	defer rows.Close()
+
+	var articles []model.Article
+	for rows.Next() {
+		var a model.Article
+		var pub sql.NullString
+		if err := rows.Scan(&a.URL, &a.Title, &a.FeedName, &a.Category, &a.Content, &pub); err != nil {
+			return nil, 0, fmt.Errorf("scan article: %w", err)
+		}
+		if pub.Valid && pub.String != "" {
+			if t, err := time.Parse(time.RFC3339, pub.String); err == nil {
+				a.PublishedAt = t
+			}
+		}
+		articles = append(articles, a)
+	}
+	return articles, total, rows.Err()
+}
+
 // GetDates returns all distinct dates (YYYY-MM-DD) that have articles, newest first.
 func (s *Store) GetDates() ([]string, error) {
 	rows, err := s.db.Query(`

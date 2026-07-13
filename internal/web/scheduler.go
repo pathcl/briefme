@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-const fetchHour = 6 // 06:00 local time
+const fetchHour = 1 // 06:00 local time
 
 // runScheduler runs an ingest immediately, then daily at fetchHour.
 func (srv *Server) runScheduler() {

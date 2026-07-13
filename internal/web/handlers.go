@@ -3,6 +3,7 @@ package web
 import (
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -23,7 +24,13 @@ func (srv *Server) handle(w http.ResponseWriter, r *http.Request) {
 
 func (srv *Server) renderDate(w http.ResponseWriter, r *http.Request, date string) {
 	today := time.Now().Format("2006-01-02")
-	month := date[:7] // "2026-06"
+	month := date[:7]
+
+	page := 1
+	if p, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && p > 1 {
+		page = p
+	}
+	offset := (page - 1) * pageSize
 
 	datesInMonth, err := srv.store.GetDatesInMonth(month)
 	if err != nil {
@@ -31,26 +38,38 @@ func (srv *Server) renderDate(w http.ResponseWriter, r *http.Request, date strin
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	// Ensure selected date appears in the calendar even if it has no articles.
-	datesInMonth[date] = datesInMonth[date] // no-op if already present
+	datesInMonth[date] = datesInMonth[date]
 
 	cal := buildCalendar(date, today, datesInMonth)
 
+	articles, total, err := srv.store.GetArticlesByDatePaged(date, pageSize, offset)
+	if err != nil {
+		log.Printf("web: GetArticlesByDatePaged(%s): %v", date, err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	// Group into category sections preserving order.
+	grouped := make(map[string]*categorySection)
+	var order []string
+	for _, a := range articles {
+		if _, ok := grouped[a.Category]; !ok {
+			grouped[a.Category] = &categorySection{Name: a.Category}
+			order = append(order, a.Category)
+		}
+		grouped[a.Category].Articles = append(grouped[a.Category].Articles, srv.articleToWeb(a))
+	}
 	var sections []categorySection
-	for _, cat := range srv.categories() {
-		articles, err := srv.store.GetArticlesByDate(cat, date)
-		if err != nil {
-			log.Printf("web: GetArticlesByDate(%s, %s): %v", cat, date, err)
-			continue
-		}
-		if len(articles) == 0 {
-			continue
-		}
-		sec := categorySection{Name: cat}
-		for _, a := range articles {
-			sec.Articles = append(sec.Articles, srv.articleToWeb(a))
-		}
-		sections = append(sections, sec)
+	for _, cat := range order {
+		sections = append(sections, *grouped[cat])
+	}
+
+	prevPage, nextPage := 0, 0
+	if page > 1 {
+		prevPage = page - 1
+	}
+	if offset+pageSize < total {
+		nextPage = page + 1
 	}
 
 	data := pageData{
@@ -58,6 +77,10 @@ func (srv *Server) renderDate(w http.ResponseWriter, r *http.Request, date strin
 		Today:    today,
 		Calendar: cal,
 		Sections: sections,
+		Page:     page,
+		PrevPage: prevPage,
+		NextPage: nextPage,
+		Total:    total,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -153,6 +176,23 @@ func (srv *Server) handleRemoveTag(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	if ref == "" {
+		ref = "/"
+	}
+	http.Redirect(w, r, ref, http.StatusSeeOther)
+}
+
+func (srv *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
+	if srv.cfg.RefreshKey == "" {
+		http.Error(w, "refresh not configured", http.StatusForbidden)
+		return
+	}
+	if r.FormValue("key") != srv.cfg.RefreshKey {
+		http.Error(w, "invalid key", http.StatusUnauthorized)
+		return
+	}
+	go srv.ingest(srv.cfg, srv.store)
+	ref := r.FormValue("ref")
 	if ref == "" {
 		ref = "/"
 	}
