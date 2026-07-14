@@ -116,9 +116,29 @@ func TestFetchArticles_CategoryPassedToArticles(t *testing.T) {
 	}
 }
 
-func TestFetchArticles_BadURL(t *testing.T) {
-	_, err := feed.FetchArticles([]config.FeedConfig{{URL: "http://127.0.0.1:0/bad", Name: "Bad"}}, 10)
-	if err == nil {
-		t.Fatal("expected error for bad URL")
+func TestFetchArticles_BadURLSkipped(t *testing.T) {
+	// A failing feed should be skipped, not abort the whole fetch.
+	articles, err := feed.FetchArticles([]config.FeedConfig{{URL: "http://127.0.0.1:0/bad", Name: "Bad"}}, 10)
+	if err != nil {
+		t.Fatalf("bad feed should not return error, got: %v", err)
+	}
+	if len(articles) != 0 {
+		t.Errorf("expected 0 articles from bad feed, got %d", len(articles))
+	}
+}
+
+func TestFetchArticles_BadFeedDoesNotBlockGoodFeed(t *testing.T) {
+	// A failing feed should not prevent subsequent feeds from being fetched.
+	srv := rssServer(t)
+	feeds := []config.FeedConfig{
+		{URL: "http://127.0.0.1:0/bad", Name: "Bad"},
+		{URL: srv.URL, Name: "Good"},
+	}
+	articles, err := feed.FetchArticles(feeds, 10)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(articles) != 2 {
+		t.Errorf("expected 2 articles from good feed, got %d", len(articles))
 	}
 }

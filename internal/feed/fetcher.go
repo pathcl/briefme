@@ -1,7 +1,7 @@
 package feed
 
 import (
-	"fmt"
+	"log"
 	"time"
 
 	"github.com/mmcdole/gofeed"
@@ -17,7 +17,8 @@ func FetchArticles(feeds []config.FeedConfig, max int) ([]model.Article, error) 
 	for _, fc := range feeds {
 		feed, err := parser.ParseURL(fc.URL)
 		if err != nil {
-			return nil, fmt.Errorf("fetch feed %q: %w", fc.URL, err)
+			log.Printf("skip feed %q: %v", fc.URL, err)
+			continue
 		}
 
 		feedCount := 0
