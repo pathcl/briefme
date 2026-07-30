@@ -1,173 +1,150 @@
 # briefme
 
-A Go CLI that fetches articles from RSS feeds, packages them as EPUBs per category, and copies the results to your Kobo e-reader over USB.
+A Go application that fetches articles from RSS feeds, stores them in SQLite, and serves them as a clean reading web UI. Articles can also be packaged as EPUBs and delivered to a Kobo e-reader over USB.
 
 ## What you get
 
-- **Pure text, nothing else.** Every EPUB contains only article text — no images, no ads, no tracking pixels, no JavaScript. Exactly what you want to read on an e-reader.
-- **One EPUB per category.** Feeds are tagged as `news` or `papers`. Each run produces separate files (`briefme-news-YYYY-MM-DD.epub`, `briefme-papers-YYYY-MM-DD.epub`) so you can read them independently.
-- **Daily accumulation.** Run `briefme` multiple times in a day and each new article is appended — the EPUB grows as new content is found. Already-seen articles are never duplicated.
+- **Clean reading UI.** Browse articles by date with a monthly calendar nav. External media (images, videos, iframes) is blocked by default and revealed on demand.
+- **Tagging.** Tag articles manually or accept keyword suggestions. Browse your tags at `/tags`.
+- **One EPUB per category.** Each run produces `briefme-news-YYYY-MM-DD.epub`, `briefme-papers-YYYY-MM-DD.epub`, etc. for Kobo delivery.
+- **No duplicates.** SQLite tracks seen articles across runs.
+- **Resilient fetching.** A failing or timing-out feed is skipped; the rest continue.
 
 ## How it works
 
 ```
 RSS/arXiv feeds
-       ↓
-  fetch & scrape full article text
-       ↓
-  deduplicate (SQLite)
-       ↓
-  build one EPUB per category
-       ↓
-  copy to Kobo over USB
+      ↓
+ fetch & scrape full article text (non-HTML content rejected)
+      ↓
+ deduplicate (SQLite)
+      ↓
+ serve via web UI   ─── or ───   build EPUBs → copy to Kobo
 ```
 
-When your Kobo is connected via USB it mounts as a regular drive. `briefme` writes dated EPUBs directly to it. Disconnect and the files appear in your library.
-
-## Installation
-
-Pre-built binaries for Linux, macOS, and Windows are available on the [releases page](https://github.com/pathcl/briefme/releases).
-
-Or install with Go:
-
-```bash
-go install github.com/pathcl/briefme/cmd/briefme@latest
-```
-
-Or build from source:
+## Quick start
 
 ```bash
 git clone https://github.com/pathcl/briefme
 cd briefme
-go build -o briefme ./cmd/briefme
+cp config.yaml.example config.yaml   # edit feeds, db_path, refresh_key
+make serve                            # builds and starts the web server
 ```
+
+Open `http://localhost:8080`.
+
+## Makefile
+
+| Command | What it does |
+|---|---|
+| `make build` | Compile binary to `./briefme` |
+| `make serve` | Build and start the web server on `0.0.0.0:8080` |
+| `make run` | Build and run the fetch/EPUB mode |
+| `make test` | Run the full test suite |
+| `make clean` | Remove the binary |
 
 ## Configuration
-
-Copy the example config and edit it:
-
-```bash
-cp config.yaml.example config.yaml
-```
 
 ```yaml
 feeds:
   - url: "https://hnrss.org/frontpage"
     name: "Hacker News"
-    category: "news"          # → briefme-news-YYYY-MM-DD.epub
+    category: "news"
 
   - url: "https://arxiv.org/rss/cs.AI"
     name: "arXiv CS.AI"
-    category: "papers"        # → briefme-papers-YYYY-MM-DD.epub
+    category: "papers"
 
-# Mount path of your Kobo when connected via USB.
-# Leave empty to let briefme auto-detect it.
-kobo_path: ""
-
-max_per_feed: 5   # articles fetched per feed per run
+kobo_path: ""        # leave empty to auto-detect
+max_per_feed: 5      # articles fetched per feed per run
 db_path: "briefme.db"
+
+# Secret phrase for the on-demand refresh button in the web UI.
+# Prefer the env var so the secret is never committed.
+refresh_key: ""
 ```
 
-### Categories
+`config.yaml` is gitignored. Copy from `config.yaml.example` and keep it local.
 
-Each feed has a `category` field. Two categories ship in the example config:
+### refresh_key
 
-| Category | Output file | Feeds |
-|---|---|---|
-| `news` | `briefme-news-YYYY-MM-DD.epub` | Hacker News, Ars Technica, Quanta Magazine, The Register |
-| `papers` | `briefme-papers-YYYY-MM-DD.epub` | arXiv CS.AI, arXiv CS.LG |
+Set a secret phrase to enable the **↻ refresh** button in the navbar. Clicking it reveals a password input; submitting the correct key triggers an immediate feed fetch in the background.
 
-You can add your own categories — any string is valid. Each distinct category produces its own EPUB.
+The key can also be set via environment variable (takes precedence over the config):
 
-### Finding the Kobo mount path
+```bash
+BRIEFME_REFRESH_KEY=yourphrase briefme serve
+```
 
-Connect the Kobo via USB and look for it at:
+## Web UI
 
-| OS | Typical path |
+| Route | Description |
 |---|---|
-| macOS | `/Volumes/KOBOeReader` |
-| Linux | `/media/<username>/KOBOeReader` or `/run/media/<username>/KOBOeReader` |
-| Windows | `E:\` (or whichever drive letter Windows assigns) |
+| `GET /` | Redirects to today's date |
+| `GET /YYYY-MM-DD` | Articles for that date, paginated (20 per page) |
+| `GET /YYYY-MM-DD?page=N` | Subsequent pages |
+| `GET /tags` | Tag index with article counts |
+| `GET /tags/{tag}` | All articles carrying that tag |
+| `POST /refresh` | Trigger an immediate fetch (requires `key` form field) |
 
-If you leave `kobo_path` empty, `briefme` checks the common locations above automatically.
+### Media toggle
 
-## Usage
+External images, videos, and iframes are blocked on page load. Click **show media** in the navbar to reveal them. The preference is stored in `localStorage` and persists across pages.
 
-```bash
-# Plug in your Kobo, then run:
-briefme --config config.yaml
-
-# Default config path is ./config.yaml
-briefme
-```
-
-Each run produces one EPUB per category and copies them to the Kobo. Articles already on the device (same SHA-256) are skipped.
-
-## Releases
-
-`briefme` uses [GoReleaser](https://goreleaser.com/) via GitHub Actions. To cut a release:
+## CLI mode (Kobo)
 
 ```bash
-git tag -a v0.1.0 -m "Initial release"
-git push origin v0.1.0
+briefme --config config.yaml           # fetch, build EPUBs, deliver to Kobo
+briefme --config config.yaml --dry-run # build EPUBs locally, skip Kobo copy
 ```
 
-The CI pipeline builds binaries for Linux, macOS, and Windows (amd64 + arm64 where applicable), produces checksums, and publishes everything to the GitHub releases page automatically.
+## Subcommands
 
-## Automating the workflow
+```
+briefme [flags]          # fetch + EPUB + Kobo delivery (default)
+briefme serve [flags]    # start the web server
 
-Because the Kobo needs to be physically connected, automation is most useful as a script you run before a commute:
+serve flags:
+  -config string   path to config file (default "config.yaml")
+  -port   string   HTTP listen port (default "8080")
+  -bind   string   HTTP bind address (default "0.0.0.0")
+```
+
+## Deployment on Fly.io
 
 ```bash
-#!/bin/bash
-# sync-kobo.sh — run once when you plug in the Kobo
-briefme --config ~/briefme/config.yaml && echo "Kobo ready — safe to eject"
+# One-time setup
+fly launch --no-deploy
+fly volumes create briefme_data --size 1 --region ams
+fly secrets set BRIEFME_REFRESH_KEY=yourphrase
+
+# Deploy
+fly deploy
 ```
 
-### Linux: fix "permission denied" on write
+The included `fly.toml` mounts the volume at `/data`. Set `db_path: /data/briefme.db` in your config so the database survives deploys. Keep `min_machines_running = 1` so the daily scheduler stays alive.
 
-FAT32 devices mount without a `uid=` option by default, so ownership goes to root. `remount` cannot change `uid` on FAT — you must unmount and remount from scratch.
+## Scheduled fetch
 
-**Quick fix** (lasts until next replug):
-
-```bash
-sudo umount /media/kobo
-sudo mount -t vfat -o uid=$(id -u),gid=$(id -g),fmask=0022,dmask=0022 /dev/sda /media/kobo
-```
-
-**Permanent fix** via `/etc/fstab`:
-
-```bash
-# Find the UUID of the device
-sudo blkid /dev/sda
-
-# Add to /etc/fstab (replace UUID, device, and uid/gid with your values):
-UUID=XXXX-XXXX  /media/kobo  vfat  uid=1000,gid=1000,fmask=0022,dmask=0022,nofail  0  0
-```
-
-After editing fstab: `sudo umount /media/kobo && sudo mount -a` to verify, then replug.
-
-### Linux: run on USB connect
-
-```
-# /etc/udev/rules.d/99-kobo-sync.rules
-ACTION=="add", SUBSYSTEM=="block", ENV{ID_FS_LABEL}=="KOBOeReader", \
-  RUN+="/usr/local/bin/briefme --config /home/<username>/briefme/config.yaml"
-```
+When running `briefme serve`, an initial fetch runs on startup and then daily at **06:00 local time**. Use the **↻ refresh** button for on-demand fetches.
 
 ## Project layout
 
 ```
 briefme/
-├── cmd/briefme/main.go       # CLI entry point
+├── cmd/briefme/main.go       # CLI entry point (serve + fetch subcommands)
 ├── internal/
-│   ├── config/               # YAML config loading
+│   ├── config/               # YAML config loading + env var overrides
 │   ├── feed/                 # RSS fetching, scraping, arXiv HTML extraction
 │   ├── epub/                 # EPUB assembly (one per category)
-│   ├── store/                # SQLite deduplication + EPUB checksum tracking
+│   ├── store/                # SQLite: articles, tags, EPUB checksums
 │   ├── deliver/              # copy EPUBs to Kobo (auto-detect mount)
+│   ├── web/                  # HTTP server, handlers, templates, scheduler
 │   └── model/                # shared Article struct
 ├── config.yaml.example
+├── Dockerfile
+├── fly.toml
+├── Makefile
 ├── go.mod
 └── go.sum
 ```
@@ -179,12 +156,14 @@ briefme/
 | [`github.com/mmcdole/gofeed`](https://github.com/mmcdole/gofeed) | RSS/Atom feed parsing |
 | [`github.com/bmaupin/go-epub`](https://github.com/bmaupin/go-epub) | EPUB generation |
 | [`github.com/go-shiori/go-readability`](https://github.com/go-shiori/go-readability) | Full article text extraction |
-| [`github.com/PuerkitoBio/goquery`](https://github.com/PuerkitoBio/goquery) | HTML parsing for text cleanup |
-| [`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite) | Pure-Go SQLite (no CGO — works in cross-compiled binaries) |
+| [`github.com/PuerkitoBio/goquery`](https://github.com/PuerkitoBio/goquery) | HTML parsing for media handling |
+| [`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite) | Pure-Go SQLite (no CGO) |
 | [`gopkg.in/yaml.v3`](https://pkg.go.dev/gopkg.in/yaml.v3) | YAML config parsing |
 
 ## Running tests
 
 ```bash
+make test
+# or
 go test ./...
 ```
